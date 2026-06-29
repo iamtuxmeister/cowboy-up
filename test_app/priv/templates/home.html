@@ -1,0 +1,30 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="container">
+    <section class="hero">
+        <h1>{{ title }}</h1>
+        <p class="lead">Erlang + Cowboy + ErlyDTL + SQLite.</p>
+    </section>
+    <section class="card">
+        <h2>Example Records</h2>
+        {% if items %}
+        <table class="data-table">
+            <thead>
+                <tr><th>ID</th><th>Name</th><th>Created</th></tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.id }}</td>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.created_at }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No records yet — insert rows into the <code>example</code> table.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

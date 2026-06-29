@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cowboy-up"
+version = "0.1.0"
+description = "Erlang/Cowboy/ErlyDTL project generator"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+dependencies = [
+    "questionary>=2.0",
+]
+
+[project.scripts]
+cowboy-up = "cowboy_up.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cowboy_up*"]
+
+[tool.setuptools.package-data]
+cowboy_up = ["templates/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,11 @@
+{% extends "layouts/base.html" %}
+{% block title %}Error {{ status }}{% endblock %}
+{% block content %}
+<div class="container">
+    <section class="card error-card">
+        <h1>{{ status }}</h1>
+        <p>{{ message }}</p>
+        <a href="/" class="btn">Go home</a>
+    </section>
+</div>
+{% endblock %}

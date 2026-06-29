@@ -1,0 +1,16 @@
+{application, test_app, [
+    {description, "Test App Erlang/Cowboy web application"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {test_app_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        cowboy,
+        esqlite,
+        jsone
+    ]},
+    {env, []},
+    {modules, []}
+]}.

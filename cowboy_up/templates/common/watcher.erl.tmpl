@@ -1,0 +1,129 @@
+%%% Development hot-reload watcher.
+%%% Watches src/ (.erl) and priv/ (.html, .css, .js, etc.)
+%%% Only started when fs app is available (dev profile).
+%%% Start with: rebar3 as dev shell
+-module(${app_name}_watcher).
+-behaviour(gen_server).
+
+-export([start_link/0]).
+-export([init/1, handle_info/2, handle_call/3, handle_cast/2,
+         code_change/3, terminate/2]).
+
+-define(ERL_EXTS,   [".erl"]).
+-define(DTL_EXTS,   [".html", ".htm"]).
+-define(ASSET_EXTS, [".css", ".js", ".json", ".ts", ".scss", ".less",
+                     ".svg", ".xml", ".txt"]).
+-define(ALL_EXTS,   ?ERL_EXTS ++ ?DTL_EXTS ++ ?ASSET_EXTS).
+-define(DEBOUNCE_MS, 150).
+
+-record(state, {debounce = #{} :: map()}).
+
+start_link() ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+
+init([]) ->
+    SrcDir  = filename:absname("src"),
+    PrivDir = filename:absname("priv"),
+    ok = start_fs(${app_name}_fs_src,  SrcDir),
+    ok = start_fs(${app_name}_fs_priv, PrivDir),
+    fs:subscribe(${app_name}_fs_src),
+    fs:subscribe(${app_name}_fs_priv),
+    error_logger:info_msg(
+        "[watcher] Hot-reload active~n"
+        "          src/  -> .erl recompile + code:load~n"
+        "          priv/ -> .html recompile all templates, assets logged~n"),
+    {ok, #state{}}.
+
+handle_info({_Pid, {fs, file_event}, {Path, Events}}, State) ->
+    PathStr   = to_list(Path),
+    Ext       = string:lowercase(filename:extension(PathStr)),
+    IsWatched = lists:member(Ext, ?ALL_EXTS),
+    IsWrite   = is_write_event(Events),
+    NewState  = case IsWatched andalso IsWrite of
+        false -> State;
+        true  -> schedule(PathStr, Ext, State)
+    end,
+    {noreply, NewState};
+
+handle_info({debounce, PathStr, Ext}, State) ->
+    do_reload(PathStr, Ext),
+    {noreply, State#state{debounce = maps:remove(list_to_binary(PathStr),
+                                                  State#state.debounce)}};
+
+handle_info(Msg, State) ->
+    error_logger:info_msg("[watcher] unhandled: ~p~n", [Msg]),
+    {noreply, State}.
+
+handle_call(_,_,S) -> {reply, ok, S}.
+handle_cast(_,S)   -> {noreply, S}.
+code_change(_,S,_) -> {ok, S}.
+terminate(_,_)     ->
+    (catch fs:stop(${app_name}_fs_src)),
+    (catch fs:stop(${app_name}_fs_priv)),
+    ok.
+
+schedule(PathStr, Ext, #state{debounce = D} = State) ->
+    Key = list_to_binary(PathStr),
+    case maps:get(Key, D, undefined) of
+        undefined -> ok;
+        OldRef    -> erlang:cancel_timer(OldRef)
+    end,
+    NewRef = erlang:send_after(?DEBOUNCE_MS, self(), {debounce, PathStr, Ext}),
+    State#state{debounce = D#{Key => NewRef}}.
+
+do_reload(Path, Ext) when Ext =:= ".erl"  -> reload_erl(Path);
+do_reload(Path, Ext) when Ext =:= ".html";
+                          Ext =:= ".htm"   -> reload_dtl(Path);
+do_reload(Path, Ext)                       ->
+    error_logger:info_msg("[watcher] asset changed (~s): ~s~n", [Ext, Path]).
+
+reload_erl(Path) ->
+    error_logger:info_msg("[watcher] .erl changed: ~s~n", [Path]),
+    EbinDir = code:lib_dir($app_name, ebin),
+    Opts = [binary, debug_info, return_errors, return_warnings,
+            {outdir, EbinDir}, {i, "_build/default/lib"}],
+    case compile:file(Path, Opts) of
+        {ok, Mod, _Bin, []} ->
+            hot_load(Mod, EbinDir),
+            error_logger:info_msg("[watcher] Reloaded: ~p~n", [Mod]);
+        {ok, Mod, _Bin, Warns} ->
+            hot_load(Mod, EbinDir),
+            error_logger:warning_msg("[watcher] ~p reloaded with warnings: ~p~n",
+                                     [Mod, Warns]);
+        {error, Errors, _} ->
+            error_logger:error_msg("[watcher] Compile FAILED ~s:~n~p~n",
+                                   [Path, Errors])
+    end.
+
+hot_load(Mod, EbinDir) ->
+    code:soft_purge(Mod),
+    case code:load_abs(filename:join(EbinDir, atom_to_list(Mod))) of
+        {module, Mod} -> ok;
+        {error, E}    ->
+            error_logger:error_msg("[watcher] load_abs failed ~p: ~p~n", [Mod, E])
+    end.
+
+reload_dtl(Path) ->
+    error_logger:info_msg("[watcher] .html changed: ~s~n", [Path]),
+    case ${app_name}_templates:compile_all() of
+        ok              -> error_logger:info_msg("[watcher] All templates reloaded~n");
+        {error, Errors} -> error_logger:error_msg("[watcher] Template errors:~n~p~n",
+                                                   [Errors])
+    end.
+
+to_list(P) when is_binary(P) -> binary_to_list(P);
+to_list(P)                   -> P.
+
+is_write_event(Events) ->
+    lists:any(fun(E) -> lists:member(E, [closed, modified, close_write,
+                                         created, renamed, moved_to]) end,
+              Events).
+
+start_fs(Name, Dir) ->
+    case fs:start_link(Name, Dir) of
+        {ok, _}                       -> ok;
+        {error, {already_started, _}} -> ok;
+        {error, R} ->
+            error_logger:error_msg("[watcher] fs start failed ~s: ~p~n", [Dir, R]),
+            {error, R}
+    end.

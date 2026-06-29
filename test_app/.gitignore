@@ -1,0 +1,5 @@
+_build/
+priv/db/*.db
+erl_crash.dump
+*.beam
+.rebar3/

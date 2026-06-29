@@ -1,0 +1,38 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="space-y-6">
+    <div class="hero bg-base-100 rounded-box py-10">
+        <div class="hero-content text-left w-full">
+            <div>
+                <h1 class="text-4xl font-bold">{{ title }}</h1>
+                <p class="py-3 text-base-content/60">Erlang + Cowboy + ErlyDTL + DaisyUI.</p>
+            </div>
+        </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title">Example Records</h2>
+            {% if items %}
+            <div class="overflow-x-auto">
+                <table class="table table-zebra">
+                    <thead>
+                        <tr><th>ID</th><th>Name</th><th>Created</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.id }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.created_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-base-content/50 italic">No records yet — insert rows into the <code class="kbd kbd-sm">example</code> table.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

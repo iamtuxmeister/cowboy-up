@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: cowboy-up
+Version: 0.1.0
+Summary: Erlang/Cowboy/ErlyDTL project generator
+License: MIT
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: questionary>=2.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"

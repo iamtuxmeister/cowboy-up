@@ -1,0 +1,105 @@
+%%% Database abstraction — SQLite backend (esqlite 0.8.x)
+%%% Switch to postgres by changing {db_backend, postgres} in sys.config
+%%% and uncommenting epgsql/poolboy in rebar.config.
+-module(${app_name}_db).
+
+-export([init/0, close/0, q/1, q/2, exec/1, exec/2]).
+
+init() ->
+    case backend() of
+        sqlite   -> init_sqlite();
+        postgres -> init_postgres()
+    end.
+
+close() ->
+    case backend() of
+        sqlite   -> esqlite3:close(conn());
+        postgres -> ok
+    end.
+
+q(Sql)         -> q(Sql, []).
+q(Sql, Params) ->
+    case backend() of
+        sqlite   -> sqlite_q(Sql, Params);
+        postgres -> {error, postgres_not_configured}
+    end.
+
+exec(Sql)         -> exec(Sql, []).
+exec(Sql, Params) ->
+    case backend() of
+        sqlite   -> sqlite_exec(Sql, Params);
+        postgres -> {error, postgres_not_configured}
+    end.
+
+%% --- SQLite ----------------------------------------------------------------
+
+init_sqlite() ->
+    {ok, Cfg} = application:get_env($app_name, sqlite),
+    Path = proplists:get_value(path, Cfg, "priv/db/${app_name}.db"),
+    ok   = filelib:ensure_dir(Path),
+    {ok, Db} = esqlite3:open(Path),
+    persistent_term:put({${app_name}_db, conn}, Db),
+    run_migrations(Db),
+    ok.
+
+conn() -> persistent_term:get({${app_name}_db, conn}).
+
+sqlite_q(Sql, Params) ->
+    case esqlite3:q(conn(), Sql, Params) of
+        Rows when is_list(Rows) -> {ok, Rows};
+        {error, _} = E          -> E
+    end.
+
+sqlite_exec(Sql, []) ->
+    case esqlite3:exec(conn(), Sql) of
+        ok             -> ok;
+        {error, _} = E -> E
+    end;
+sqlite_exec(Sql, Params) ->
+    case esqlite3:q(conn(), Sql, Params) of
+        Rows when is_list(Rows) -> ok;
+        {error, _} = E          -> E
+    end.
+
+%% --- PostgreSQL stub -------------------------------------------------------
+
+init_postgres() ->
+    error(postgres_backend_not_configured).
+
+%% --- Migrations ------------------------------------------------------------
+
+run_migrations(Db) ->
+    esqlite3:exec(Db,
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "  version TEXT PRIMARY KEY,"
+        "  applied_at TEXT DEFAULT (datetime('now'))"
+        ");"),
+    lists:foreach(fun({Vsn, Sql}) ->
+        Rows = esqlite3:q(Db,
+            "SELECT version FROM schema_migrations WHERE version = ?1",
+            [Vsn]),
+        case Rows of
+            [] ->
+                ok = esqlite3:exec(Db, Sql),
+                esqlite3:q(Db,
+                    "INSERT INTO schema_migrations (version) VALUES (?1)",
+                    [Vsn]),
+                error_logger:info_msg("[db] Applied migration: ~s~n", [Vsn]);
+            _ -> ok
+        end
+    end, migrations()).
+
+migrations() ->
+    [
+        {"20240101_001_create_example",
+         "CREATE TABLE IF NOT EXISTS example ("
+         "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+         "  name       TEXT NOT NULL,"
+         "  created_at TEXT DEFAULT (datetime('now'))"
+         ");"}
+        %% Add new migrations here:
+        %% {"20240102_002_your_migration", "SQL HERE"}
+    ].
+
+backend() ->
+    application:get_env($app_name, db_backend, sqlite).

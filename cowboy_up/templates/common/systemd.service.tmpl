@@ -1,0 +1,21 @@
+[Unit]
+Description=$display_name Erlang web service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/$app_name
+ExecStart=/path/to/$app_name/_build/default/rel/$app_name/bin/$app_name foreground
+ExecStop=/path/to/$app_name/_build/default/rel/$app_name/bin/$app_name stop
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+Environment=HOME=/var/lib/$app_name
+Environment=ERL_CRASH_DUMP=/var/log/$app_name/erl_crash.dump
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$app_name
+
+[Install]
+WantedBy=multi-user.target

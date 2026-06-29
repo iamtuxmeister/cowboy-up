@@ -1,0 +1,32 @@
+-module(${app_name}_app).
+-behaviour(application).
+
+-export([start/2, stop/1]).
+
+start(_Type, _Args) ->
+    {ok, Env} = application:get_env($app_name, http),
+    Port = proplists:get_value(port, Env, 8080),
+
+    ok = ${app_name}_templates:compile_all(),
+    ok = ${app_name}_db:init(),
+
+    Dispatch = cowboy_router:compile([
+        {'_', [
+            {"/",             home_handler,  []},
+            {"/about",        page_handler,  [{page, about}]},
+            {"/static/[...]", cowboy_static, {priv_dir, $app_name, "static"}}
+        ]}
+    ]),
+
+    {ok, _} = cowboy:start_clear(http_listener,
+        [{port, Port}],
+        #{env => #{dispatch => Dispatch}}
+    ),
+
+    error_logger:info_msg("$app_name started on port ~p~n", [Port]),
+    ${app_name}_sup:start_link().
+
+stop(_State) ->
+    cowboy:stop_listener(http_listener),
+    ${app_name}_db:close(),
+    ok.

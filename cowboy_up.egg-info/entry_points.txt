@@ -1,0 +1,2 @@
+[console_scripts]
+cowboy-up = cowboy_up.cli:main

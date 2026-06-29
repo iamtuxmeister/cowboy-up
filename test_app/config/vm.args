@@ -1,0 +1,7 @@
+-name test_app@127.0.0.1
+-setcookie test_app_cookie
++P 1048576
+-smp enable
++A 16
++zdbbl 32768
+-env ERL_CRASH_DUMP /tmp/test_app_erl_crash.dump

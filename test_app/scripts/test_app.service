@@ -1,0 +1,21 @@
+[Unit]
+Description=Test App Erlang web service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/test_app
+ExecStart=/path/to/test_app/_build/default/rel/test_app/bin/test_app foreground
+ExecStop=/path/to/test_app/_build/default/rel/test_app/bin/test_app stop
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+Environment=HOME=/var/lib/test_app
+Environment=ERL_CRASH_DUMP=/var/log/test_app/erl_crash.dump
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=test_app
+
+[Install]
+WantedBy=multi-user.target

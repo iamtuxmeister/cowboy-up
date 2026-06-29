@@ -1,0 +1,39 @@
+{erl_opts, [debug_info, {i, "_build/default/lib"}]}.
+
+{deps, [
+    {cowboy,  "2.10.0"},
+$templating_dep
+    {esqlite, "0.8.0"},
+$db_extra_deps
+    {jsone,   "1.8.1"}
+]}.
+
+{profiles, [
+    {dev, [
+        {deps, [{fs, "3.4.0"}]},
+        {shell, [
+            {config, "config/sys.config"},
+            {apps,   [fs, $app_name]}
+        ]}
+    ]}
+]}.
+
+{shell, [
+    {config, "config/sys.config"},
+    {apps,   [$app_name]}
+]}.
+
+{plugins, [rebar3_erlydtl_plugin]}.
+
+$provider_hooks
+
+$erlydtl_opts
+
+{relx, [
+    {release, {$app_name, "0.1.0"}, [$app_name, sasl]},
+    {mode, dev},
+    {sys_config, "config/sys.config"},
+    {vm_args,    "config/vm.args"},
+    {include_erts, false},
+    {extended_start_script, true}
+]}.
