@@ -140,7 +140,7 @@ class TestWriteMigrations:
         assert len(files) == 1
         assert "create_teachings" in files[0].name
         content = files[0].read_text()
-        assert "-migration({myapp})" in content
+        assert "-migration(myapp)" in content
         assert "CREATE TABLE teachings" in content
         assert "title  TEXT NOT NULL" in content
 

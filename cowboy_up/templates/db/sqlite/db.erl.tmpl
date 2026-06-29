@@ -133,7 +133,8 @@ discover_migrations() ->
 is_migration_for(Mod, App) ->
     case catch Mod:module_info(attributes) of
         Attrs when is_list(Attrs) ->
-            lists:member({migration, [App]}, Attrs);
+            %% -migration(app_name). produces {migration, app_name} in attributes
+            lists:member({migration, App}, Attrs);
         _ ->
             false
     end.
