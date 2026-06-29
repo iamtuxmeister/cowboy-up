@@ -162,7 +162,8 @@ def _write_files(cfg: ProjectConfig) -> None:
         # Seed migration
         ("models/seed_migration.erl.tmpl",
          f"src/migrations/{v['datestamp']}_001_create_example.erl"),
-        # CSS        (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
+        # CSS
+        (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
     ] + html_files
 
     # Inline files that don't need a template

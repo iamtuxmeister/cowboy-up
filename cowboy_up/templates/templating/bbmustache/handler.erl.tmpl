@@ -4,7 +4,7 @@
 -export([render/3, reply_json/3, reply_error/3, not_found/1, base_ctx/1]).
 
 render(Req, Template, Ctx) ->
-    TemplatePath = filename:join([code:priv_dir($app_name), "templates", Template]),
+    TemplatePath = filename:join([priv_dir(), "templates", Template]),
     FullCtx = maps:merge(base_ctx(Req), Ctx),
     case file:read_file(TemplatePath) of
         {ok, Bin} ->
@@ -25,7 +25,7 @@ reply_json(Req, Status, Data) ->
         jsone:encode(Data), Req).
 
 reply_error(Req, Status, Message) ->
-    ErrorTemplate = filename:join([code:priv_dir($app_name), "templates", "error.html"]),
+    ErrorTemplate = filename:join([priv_dir(), "templates", "error.html"]),
     Ctx = #{status => integer_to_binary(Status), message => Message},
     case file:read_file(ErrorTemplate) of
         {ok, Bin} ->
@@ -75,3 +75,12 @@ to_atom(K) when is_list(K)   -> list_to_atom(K).
 
 is_list_of_maps([])      -> false;
 is_list_of_maps([H | _]) -> is_map(H).
+
+priv_dir() ->
+    case code:priv_dir($app_name) of
+        {error, bad_name} ->
+            BeamPath = code:which(?MODULE),
+            AppDir   = filename:dirname(filename:dirname(BeamPath)),
+            filename:join(AppDir, "priv");
+        Dir -> Dir
+    end.

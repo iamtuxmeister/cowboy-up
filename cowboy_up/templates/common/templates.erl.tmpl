@@ -64,7 +64,16 @@ template_module(Path) ->
     list_to_atom(Flat ++ "_dtl").
 
 template_dir() ->
-    filename:join(code:priv_dir($app_name), "templates").
+    filename:join(priv_dir(), "templates").
+
+priv_dir() ->
+    case code:priv_dir($app_name) of
+        {error, bad_name} ->
+            BeamPath = code:which(?MODULE),
+            AppDir   = filename:dirname(filename:dirname(BeamPath)),
+            filename:join(AppDir, "priv");
+        Dir -> Dir
+    end.
 
 load_from_disk(Mod, OutDir) ->
     BeamFile = filename:join(OutDir, atom_to_list(Mod)),

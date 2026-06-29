@@ -10,11 +10,15 @@ start(_Type, _Args) ->
     ok = ${app_name}_templates:compile_all(),
     ok = ${app_name}_db:init(),
 
+    %% Resolve priv/ from the actual beam file location so static serving
+    %% works correctly under both rebar3 shell (dev profile) and releases.
+    PrivDir = priv_dir(),
+
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/",             home_handler,  []},
             {"/about",        page_handler,  [{page, about}]},
-            {"/static/[...]", cowboy_static, {priv_dir, $app_name, "static"}}
+            {"/static/[...]", cowboy_static, {dir, filename:join(PrivDir, "static")}}
         ]}
     ]),
 
@@ -30,3 +34,21 @@ stop(_State) ->
     cowboy:stop_listener(http_listener),
     ${app_name}_db:close(),
     ok.
+
+%% ---------------------------------------------------------------------------
+%% Locate the priv/ directory reliably under dev shell and releases.
+%%
+%% code:priv_dir/1 follows the symlink rebar3 creates in _build/, which
+%% points back to the real priv/ in the source tree — so this works in
+%% both dev (rebar3 as dev shell) and prod (rebar3 release).
+%% ---------------------------------------------------------------------------
+priv_dir() ->
+    case code:priv_dir($app_name) of
+        {error, bad_name} ->
+            %% Fallback: derive from this module's beam location
+            BeamPath = code:which(?MODULE),
+            AppDir   = filename:dirname(filename:dirname(BeamPath)),
+            filename:join(AppDir, "priv");
+        Dir ->
+            Dir
+    end.

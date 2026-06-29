@@ -70,15 +70,19 @@ class TestProjectGeneration:
         monkeypatch.chdir(tmp_path)
         run(raw_name="test app", css="basic", templating="erlydtl",
             db="sqlite", interactive=False)
-        assert (tmp_path / "test_app").is_dir()
-        assert (tmp_path / "test_app" / "rebar.config").exists()
-        assert (tmp_path / "test_app" / "src" / "test_app_app.erl").exists()
-        assert (tmp_path / "test_app" / "priv" / "templates" / "layouts" / "base.html").exists()
+        proj = tmp_path / "test_app"
+        assert proj.is_dir()
+        assert (proj / "rebar.config").exists()
+        assert (proj / "src" / "test_app_app.erl").exists()
+        assert (proj / "priv" / "templates" / "layouts" / "base.html").exists()
+        # Static assets must be present
+        assert (proj / "priv" / "static" / "css" / "app.css").exists()
+        assert (proj / "priv" / "static" / "js" / "app.js").exists()
         # Seed migration and registry
-        mig_dir = tmp_path / "test_app" / "src" / "migrations"
+        mig_dir = proj / "src" / "migrations"
         assert mig_dir.exists()
         assert len(list(mig_dir.glob("*create_example.erl"))) == 1
-        registry = tmp_path / "test_app" / "src" / "test_app_migrations.erl"
+        registry = proj / "src" / "test_app_migrations.erl"
         assert registry.exists()
         assert "create_example" in registry.read_text()
 
