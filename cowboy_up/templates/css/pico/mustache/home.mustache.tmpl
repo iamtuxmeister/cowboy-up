@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} — {{app_name}}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul><li><strong><a href="/">{{app_name}}</a></strong></li></ul>
+            <ul>
+                <li><a href="/" aria-current="page">Home</a></li>
+                <li><a href="/about">About</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main class="container">
+        <section>
+            <hgroup>
+                <h1>{{title}}</h1>
+                <p>Erlang + Cowboy + bbmustache + Pico CSS.</p>
+            </hgroup>
+        </section>
+        <section>
+            <h2>Example Records</h2>
+            {{#items}}
+            <figure>
+                <table>
+                    <thead><tr><th>ID</th><th>Name</th><th>Created</th></tr></thead>
+                    <tbody>
+                        {{#items}}
+                        <tr><td>{{id}}</td><td>{{name}}</td><td>{{created_at}}</td></tr>
+                        {{/items}}
+                    </tbody>
+                </table>
+            </figure>
+            {{/items}}
+            {{^items}}<p><em>No records yet.</em></p>{{/items}}
+        </section>
+    </main>
+    <footer class="container"><small>&copy; {{year}} {{app_name}}</small></footer>
+</body>
+</html>

@@ -3,7 +3,7 @@ cowboy-up CLI entry point.
 
 Commands:
     cowboy-up new "app name" [--css basic|pico|tailwind|daisyui]
-                              [--templates erlydtl|mustache]
+                              [--templates erlydtl|bbmustache]
                               [--db sqlite|postgres]
                               [--no-prompt]
 
@@ -209,7 +209,7 @@ def _print_help() -> None:
     cmds = [
         (
             f"cowboy-up new {console.cyan('\"app name\"')} [--css basic|pico|tailwind|daisyui]\n"
-            f"                         [--templates erlydtl|mustache]\n"
+            f"                         [--templates erlydtl|bbmustache]\n"
             f"                         [--db sqlite|postgres]",
             "Scaffold a new project. Prompts for choices if flags omitted.",
         ),

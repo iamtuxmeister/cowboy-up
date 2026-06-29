@@ -1,0 +1,64 @@
+%%% Shared handler utilities — bbmustache backend.
+-module(${app_name}_handler).
+
+-export([render/3, reply_json/3, reply_error/3, not_found/1, base_ctx/1]).
+
+render(Req, Template, Ctx) ->
+    TemplatePath = filename:join([code:priv_dir($app_name), "templates", Template]),
+    FullCtx = maps:merge(base_ctx(Req), Ctx),
+    case file:read_file(TemplatePath) of
+        {ok, Bin} ->
+            %% bbmustache expects string keys — convert atom keys to binary
+            StrCtx = maps:fold(fun(K, V, Acc) ->
+                Acc#{atom_to_binary(K, utf8) => to_binary(V)}
+            end, #{}, FullCtx),
+            Html = bbmustache:render(Bin, StrCtx),
+            cowboy_req:reply(200,
+                #{<<"content-type">> => <<"text/html; charset=utf-8">>},
+                Html, Req);
+        {error, Reason} ->
+            error_logger:error_msg("[handler] template ~s not found: ~p~n",
+                                   [Template, Reason]),
+            reply_error(Req, 500, <<"Template not found">>)
+    end.
+
+reply_json(Req, Status, Data) ->
+    cowboy_req:reply(Status,
+        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
+        jsone:encode(Data), Req).
+
+reply_error(Req, Status, Message) ->
+    ErrorTemplate = filename:join([code:priv_dir($app_name), "templates", "error.mustache"]),
+    Ctx = #{<<"status">> => integer_to_binary(Status), <<"message">> => Message},
+    case file:read_file(ErrorTemplate) of
+        {ok, Bin} ->
+            cowboy_req:reply(Status,
+                #{<<"content-type">> => <<"text/html; charset=utf-8">>},
+                bbmustache:render(Bin, Ctx), Req);
+        _ ->
+            cowboy_req:reply(Status,
+                #{<<"content-type">> => <<"text/plain">>},
+                Message, Req)
+    end.
+
+not_found(Req) -> reply_error(Req, 404, <<"Page not found">>).
+
+base_ctx(Req) ->
+    {Y, _, _} = date(),
+    #{path     => cowboy_req:path(Req),
+      app_name => <<"$app_name">>,
+      year     => integer_to_binary(Y)}.
+
+%% ---------------------------------------------------------------------------
+%% Internal
+%% ---------------------------------------------------------------------------
+
+to_binary(V) when is_binary(V)  -> V;
+to_binary(V) when is_atom(V)    -> atom_to_binary(V, utf8);
+to_binary(V) when is_integer(V) -> integer_to_binary(V);
+to_binary(V) when is_list(V)    ->
+    case io_lib:char_list(V) of
+        true  -> list_to_binary(V);
+        false -> list_to_binary(io_lib:format("~p", [V]))
+    end;
+to_binary(V) -> list_to_binary(io_lib:format("~p", [V])).

@@ -1,0 +1,19 @@
+%%% Template module for bbmustache — templates are read from disk at runtime.
+%%% No compilation step needed. The watcher logs asset changes but no
+%%% server-side action is required for .mustache file changes.
+-module(${app_name}_templates).
+
+-export([compile_all/0, template_dir/0]).
+
+%% bbmustache reads files at request time — nothing to compile.
+%% This function exists so myapp_app:start/2 can call compile_all/0
+%% unconditionally regardless of the template engine in use.
+compile_all() ->
+    Dir = template_dir(),
+    Files = filelib:wildcard("**/*.mustache", Dir),
+    error_logger:info_msg("[templates] bbmustache ready — ~p template(s) in ~s~n",
+                          [length(Files), Dir]),
+    ok.
+
+template_dir() ->
+    filename:join(code:priv_dir($app_name), "templates").

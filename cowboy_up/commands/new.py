@@ -105,6 +105,24 @@ def _write_files(cfg: ProjectConfig) -> None:
     """Render all templates and write to target directory."""
 
     v = _template_vars(cfg)
+    is_erlydtl   = cfg.templating == "erlydtl"
+    is_bbmustache = cfg.templating == "bbmustache"
+
+    # Select handler and templates module based on templating engine
+    handler_tmpl   = "common/handler.erl.tmpl"   if is_erlydtl else \
+                     "templating/bbmustache/handler.erl.tmpl"
+    templates_tmpl = "common/templates.erl.tmpl"  if is_erlydtl else \
+                     "templating/bbmustache/templates.erl.tmpl"
+
+    # HTML template extension and source dir
+    if is_erlydtl:
+        html_ext  = ".html"
+        html_src  = lambda page: f"css/{cfg.css}/{page}.html.tmpl"
+        base_out  = "priv/templates/layouts/base.html"
+    else:
+        html_ext  = ".mustache"
+        html_src  = lambda page: f"css/{cfg.css}/mustache/{page}.mustache.tmpl"
+        base_out  = "priv/templates/layouts/base.mustache"
 
     # Each entry: (template_path, output_path_relative_to_target)
     files = [
@@ -113,8 +131,8 @@ def _write_files(cfg: ProjectConfig) -> None:
         ("common/app.src.tmpl",                f"src/{cfg.app_name}.app.src"),
         ("common/app.erl.tmpl",                f"src/{cfg.app_name}_app.erl"),
         ("common/sup.erl.tmpl",                f"src/{cfg.app_name}_sup.erl"),
-        ("common/handler.erl.tmpl",            f"src/{cfg.app_name}_handler.erl"),
-        ("common/templates.erl.tmpl",          f"src/{cfg.app_name}_templates.erl"),
+        (handler_tmpl,                          f"src/{cfg.app_name}_handler.erl"),
+        (templates_tmpl,                        f"src/{cfg.app_name}_templates.erl"),
         ("common/watcher.erl.tmpl",            f"src/{cfg.app_name}_watcher.erl"),
         ("common/home_handler.erl.tmpl",       "src/home_handler.erl"),
         ("common/page_handler.erl.tmpl",       "src/page_handler.erl"),
@@ -130,11 +148,11 @@ def _write_files(cfg: ProjectConfig) -> None:
         ("common/systemd.service.tmpl",        f"scripts/{cfg.app_name}.service"),
         # CSS
         (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
-        # HTML templates
-        (f"css/{cfg.css}/base.html.tmpl",      "priv/templates/layouts/base.html"),
-        (f"css/{cfg.css}/home.html.tmpl",      "priv/templates/home.html"),
-        (f"css/{cfg.css}/about.html.tmpl",     "priv/templates/about.html"),
-        (f"css/{cfg.css}/error.html.tmpl",     "priv/templates/error.html"),
+        # HTML/Mustache templates
+        (html_src("base"),                     base_out),
+        (html_src("home"),                     f"priv/templates/home{html_ext}"),
+        (html_src("about"),                    f"priv/templates/about{html_ext}"),
+        (html_src("error"),                    f"priv/templates/error{html_ext}"),
     ]
 
     # Inline files that don't need a template
@@ -187,6 +205,7 @@ def _template_vars(cfg: ProjectConfig) -> dict:
     # Templating-specific vars
     if cfg.templating == "erlydtl":
         v["templating_dep"]   = '    {erlydtl, "0.14.0"},'
+        v["erlydtl_plugin"]   = "{plugins, [rebar3_erlydtl_plugin]}."
         v["provider_hooks"]   = (
             "{provider_hooks, [\n"
             "    {pre, [{compile, {erlydtl, compile}}]}\n"
@@ -201,8 +220,9 @@ def _template_vars(cfg: ProjectConfig) -> dict:
             "    {compiler_options, [debug_info, return]}\n"
             "]}."
         )
-    else:  # mustache
+    else:  # bbmustache
         v["templating_dep"]   = '    {bbmustache, "1.12.2"},'
+        v["erlydtl_plugin"]   = ""
         v["provider_hooks"]   = ""
         v["erlydtl_opts"]     = ""
 

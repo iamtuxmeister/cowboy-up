@@ -13,11 +13,11 @@ import re
 
 
 CssChoice        = Literal["basic", "pico", "tailwind", "daisyui"]
-TemplatingChoice = Literal["erlydtl", "mustache"]
+TemplatingChoice = Literal["erlydtl", "bbmustache"]
 DbChoice         = Literal["sqlite", "postgres"]
 
 CSS_CHOICES        = ("basic", "pico", "tailwind", "daisyui")
-TEMPLATING_CHOICES = ("erlydtl", "mustache")
+TEMPLATING_CHOICES = ("erlydtl", "bbmustache")
 DB_CHOICES         = ("sqlite", "postgres")
 
 

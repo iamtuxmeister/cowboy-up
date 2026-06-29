@@ -30,8 +30,8 @@ class TestTemplateVars:
         assert "provider_hooks" in v
         assert "erlydtl_opts" in v
 
-    def test_mustache_dep(self):
-        v = _template_vars(make_cfg(templating="mustache"))
+    def test_bbmustache_dep(self):
+        v = _template_vars(make_cfg(templating="bbmustache"))
         assert "bbmustache" in v["templating_dep"]
         assert v["provider_hooks"] == ""
         assert v["erlydtl_opts"] == ""
@@ -75,8 +75,29 @@ class TestProjectGeneration:
         assert (tmp_path / "test_app" / "src" / "test_app_app.erl").exists()
         assert (tmp_path / "test_app" / "priv" / "templates" / "layouts" / "base.html").exists()
 
+    def test_bbmustache_creates_mustache_files(self, tmp_path, monkeypatch):
+        from cowboy_up.commands.new import run
+        monkeypatch.chdir(tmp_path)
+        run(raw_name="mustache app", css="basic", templating="bbmustache",
+            db="sqlite", interactive=False)
+        proj = tmp_path / "mustache_app"
+        # Should have .mustache templates, not .html
+        assert (proj / "priv" / "templates" / "home.mustache").exists()
+        assert (proj / "priv" / "templates" / "about.mustache").exists()
+        assert (proj / "priv" / "templates" / "error.mustache").exists()
+        # Should NOT have the ErlyDTL layout
+        assert not (proj / "priv" / "templates" / "layouts" / "base.html").exists()
+        # Handler should be the bbmustache one (no erlydtl:compile_file call)
+        handler = (proj / "src" / "mustache_app_handler.erl").read_text()
+        assert "bbmustache" in handler
+        assert "erlydtl" not in handler
+        # rebar.config should have bbmustache dep, not erlydtl
+        rebar = (proj / "rebar.config").read_text()
+        assert "bbmustache" in rebar
+        assert "erlydtl" not in rebar
+
     def test_all_css_themes_have_templates(self):
-        """Every CSS theme must have base, home, about, error, app.css."""
+        """Every CSS theme must have base, home, about, error, app.css for erlydtl."""
         from cowboy_up.renderer import TEMPLATES_ROOT
         for theme in ("basic", "pico", "tailwind", "daisyui"):
             theme_dir = TEMPLATES_ROOT / "css" / theme
@@ -85,3 +106,13 @@ class TestProjectGeneration:
                       "about.html.tmpl", "error.html.tmpl", "app.css.tmpl"):
                 p = theme_dir / f
                 assert p.exists(), f"Missing {theme}/{f}"
+
+    def test_all_css_themes_have_mustache_templates(self):
+        """Every CSS theme must also have mustache variants."""
+        from cowboy_up.renderer import TEMPLATES_ROOT
+        for theme in ("basic", "pico", "tailwind", "daisyui"):
+            mustache_dir = TEMPLATES_ROOT / "css" / theme / "mustache"
+            assert mustache_dir.exists(), f"Missing mustache dir: {theme}/mustache"
+            for f in ("home.mustache.tmpl", "about.mustache.tmpl", "error.mustache.tmpl"):
+                p = mustache_dir / f
+                assert p.exists(), f"Missing {theme}/mustache/{f}"
