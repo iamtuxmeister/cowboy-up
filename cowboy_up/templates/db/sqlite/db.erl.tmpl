@@ -112,13 +112,23 @@ apply_migration(Db, Mod) ->
             ok
     end.
 
-%% Discover all loaded modules that are migrations for this app.
-%% Each migration module registers itself via the module attribute:
-%%   -migration({app_name}).
+%% Discover all migration modules for this app.
+%% We scan the ebin directory for beam files whose names look like migrations
+%% (YYYYMMDD_NNN_*) and load them before checking attributes — lazy loading
+%% means they may not be in code:all_loaded() yet at startup.
 discover_migrations() ->
-    App = $app_name,
-    [Mod || {Mod, _} <- code:all_loaded(),
-            is_migration_for(Mod, App)].
+    App     = $app_name,
+    EbinDir = code:lib_dir($app_name, ebin),
+    Beams   = filelib:wildcard("????????_???_*.beam", EbinDir),
+    Modules = [list_to_atom(filename:rootname(B)) || B <- Beams],
+    %% Ensure each is loaded
+    lists:foreach(fun(Mod) ->
+        case code:is_loaded(Mod) of
+            false -> code:load_file(Mod);
+            _     -> ok
+        end
+    end, Modules),
+    [Mod || Mod <- Modules, is_migration_for(Mod, App)].
 
 is_migration_for(Mod, App) ->
     case catch Mod:module_info(attributes) of

@@ -1,5 +1,0 @@
-questionary>=2.0
-
-[dev]
-pytest>=7.0
-pytest-cov
