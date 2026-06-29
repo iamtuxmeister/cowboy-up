@@ -69,7 +69,9 @@ cowboy_up/templates/css/tailwind/mustache/base.html.tmpl
 cowboy_up/templates/css/tailwind/mustache/error.html.tmpl
 cowboy_up/templates/css/tailwind/mustache/home.html.tmpl
 cowboy_up/templates/db/sqlite/db.erl.tmpl
+cowboy_up/templates/models/migration.erl.tmpl
 cowboy_up/templates/models/model.erl.tmpl
+cowboy_up/templates/models/seed_migration.erl.tmpl
 cowboy_up/templates/templating/bbmustache/handler.erl.tmpl
 cowboy_up/templates/templating/bbmustache/templates.erl.tmpl
 tests/test_config.py

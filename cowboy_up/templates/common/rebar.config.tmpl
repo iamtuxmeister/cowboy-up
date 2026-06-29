@@ -1,5 +1,9 @@
 {erl_opts, [debug_info, {i, "_build/default/lib"}]}.
 
+%% migrations/ is a subdirectory of src/ compiled as part of the app.
+%% Each migration is an Erlang module exporting version/0 and up/0.
+{src_dirs, ["src", "src/migrations"]}.
+
 {deps, [
     {cowboy,  "2.10.0"},
 $templating_dep

@@ -67,39 +67,66 @@ init_postgres() ->
     error(postgres_backend_not_configured).
 
 %% --- Migrations ------------------------------------------------------------
+%%
+%% Migrations are Erlang modules in src/migrations/, each exporting:
+%%   version/0  -> string()   e.g. "20260101_001_create_example"
+%%   up/0       -> string() | [string()]  one or more SQL statements
+%%
+%% Modules are discovered via the 'migrations' attribute registered at
+%% compile time by each migration module. They run in version-sorted order
+%% and each runs exactly once, tracked in schema_migrations.
+%%
+%% To add a migration:
+%%   cowboy-up model add-field <Model> <field:type>
+%%   — or —
+%%   create src/migrations/YYYYMMDD_NNN_description.erl manually
 
 run_migrations(Db) ->
     esqlite3:exec(Db,
         "CREATE TABLE IF NOT EXISTS schema_migrations ("
-        "  version TEXT PRIMARY KEY,"
+        "  version    TEXT PRIMARY KEY,"
         "  applied_at TEXT DEFAULT (datetime('now'))"
         ");"),
-    lists:foreach(fun({Vsn, Sql}) ->
-        Rows = esqlite3:q(Db,
-            "SELECT version FROM schema_migrations WHERE version = ?1",
-            [Vsn]),
-        case Rows of
-            [] ->
-                ok = esqlite3:exec(Db, Sql),
-                esqlite3:q(Db,
-                    "INSERT INTO schema_migrations (version) VALUES (?1)",
-                    [Vsn]),
-                error_logger:info_msg("[db] Applied migration: ~s~n", [Vsn]);
-            _ -> ok
-        end
-    end, migrations()).
+    Modules  = discover_migrations(),
+    Sorted   = lists:sort(fun(A, B) -> A:version() =< B:version() end, Modules),
+    lists:foreach(fun(Mod) -> apply_migration(Db, Mod) end, Sorted).
 
-migrations() ->
-    [
-        {"20240101_001_create_example",
-         "CREATE TABLE IF NOT EXISTS example ("
-         "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
-         "  name       TEXT NOT NULL,"
-         "  created_at TEXT DEFAULT (datetime('now'))"
-         ");"}
-        %% Add new migrations here:
-        %% {"20240102_002_your_migration", "SQL HERE"}
-    ].
+apply_migration(Db, Mod) ->
+    Vsn = Mod:version(),
+    Rows = esqlite3:q(Db,
+        "SELECT version FROM schema_migrations WHERE version = ?1",
+        [Vsn]),
+    case Rows of
+        [] ->
+            Sql = Mod:up(),
+            Statements = case is_list(Sql) andalso not io_lib:char_list(Sql) of
+                true  -> Sql;   %% list of SQL strings
+                false -> [Sql]  %% single SQL string
+            end,
+            lists:foreach(fun(S) -> ok = esqlite3:exec(Db, S) end, Statements),
+            esqlite3:q(Db,
+                "INSERT INTO schema_migrations (version) VALUES (?1)",
+                [Vsn]),
+            error_logger:info_msg("[db] Applied migration: ~s~n", [Vsn]);
+        _ ->
+            ok
+    end.
+
+%% Discover all loaded modules that are migrations for this app.
+%% Each migration module registers itself via the module attribute:
+%%   -migration({app_name}).
+discover_migrations() ->
+    App = $app_name,
+    [Mod || {Mod, _} <- code:all_loaded(),
+            is_migration_for(Mod, App)].
+
+is_migration_for(Mod, App) ->
+    case catch Mod:module_info(attributes) of
+        Attrs when is_list(Attrs) ->
+            lists:member({migration, [App]}, Attrs);
+        _ ->
+            false
+    end.
 
 backend() ->
     application:get_env($app_name, db_backend, sqlite).

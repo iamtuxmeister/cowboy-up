@@ -1,5 +1,14 @@
 """
-cowboy-up model add-field — show the manual edits needed to add a field.
+cowboy-up model add-field — add a field to an existing model.
+
+Safe edits made automatically:
+  1. Write a migration .erl file to src/migrations/
+  2. Update -define(FIELDS, ...) in the model
+  3. Update to_map([...]) pattern in the model
+  4. Insert the new key into the map body in to_map/1
+
+Shown but not touched (placeholder renumbering is risky):
+  5. create/1 and update/2
 """
 
 from __future__ import annotations
@@ -13,25 +22,26 @@ from cowboy_up.utils import detect_app_name, to_snake
 
 
 def run(model_name: str, field_spec: str) -> None:
-    # Parse the field
     try:
         f = Field.parse(field_spec)
     except FieldParseError as e:
         console.die(str(e))
 
-    # Detect app and locate model file
-    app_name   = _detect_app_name()
-    module     = _to_snake(model_name)
+    if f.relationship in ("has_many", "many_to_many"):
+        console.die(
+            f"add-field does not support relationship types. "
+            f"Use 'cowboy-up model' to add has_many or many_to_many."
+        )
+
+    app_name   = detect_app_name()
+    module     = to_snake(model_name)
     model_file = Path(f"src/models/{module}.erl")
-    db_file    = Path(f"src/{app_name}_db.erl")
 
     if not model_file.exists():
         console.die(f"{model_file} not found.")
-    if not db_file.exists():
-        console.die(f"{db_file} not found.")
 
-    # Read current state from the model file
     source = model_file.read_text(encoding="utf-8")
+
     current_fields = _extract_fields_macro(source)
     current_tomap  = _extract_tomap_line(source)
 
@@ -40,86 +50,142 @@ def run(model_name: str, field_spec: str) -> None:
     if current_tomap is None:
         console.die(f"Could not find to_map([...]) in {model_file}")
 
-    # Derive new values
-    new_fields = _insert_before_created_at(current_fields, f.name)
-    new_tomap  = _insert_var_before_created_at(current_tomap, f.erl_var)
-    today      = date.today().strftime("%Y%m%d")
-    sql_type   = (f.sql_type or "text").upper()
+    # Derived values
+    new_fields  = _insert_before(current_fields, f.name, r",\s*created_at", f", {f.name}, created_at")
+    new_tomap   = _insert_before(current_tomap,  f.erl_var, r",\s*CreatedAt\]", f", {f.erl_var}, CreatedAt]")
+    table       = _extract_table(source)
 
-    # -----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     console.header("cowboy-up model add-field")
     print(f"  Model : {console.bold(model_name)}  →  {model_file}")
-    print(f"  Field : {console.bold(f.name)}  ({f.sql_type or 'text'})")
+    print(f"  Field : {console.bold(f.name)}  ({f.sql_type})")
     console.blank()
 
-    # Step 1 — Migration
-    console.section(f"Step 1 of 3 — Migration  ({db_file})")
+    # ------------------------------------------------------------------
+    # Step 1 — Write migration file
+    # ------------------------------------------------------------------
+    console.section("Step 1 of 4 — Migration file")
+    mig_file = _write_migration(app_name, module, table, f)
     console.blank()
-    print(f"  Add this entry at the bottom of migrations() in {db_file}:\n")
-    print(f'      {{"{today}_NNN_add_{f.name}_to_{module}",')
-    print(f'       "ALTER TABLE {module}s ADD COLUMN {f.name} {sql_type};"}},')
-    console.blank()
-    print("  SQLite ALTER TABLE rules:")
-    print("    • You can ADD a column but not DROP, RENAME, or REORDER.")
-    print("    • The new column must allow NULL or have a DEFAULT value.")
-    print(f"    • For NOT NULL use:  {f.name} {sql_type} NOT NULL DEFAULT ''")
+    print(f"  {console.dim('Runs automatically on next startup.')}")
     console.blank()
     print("  Apply immediately in the running shell (no restart needed):\n")
-    print(f"      {console.cyan(f'{app_name}_db:exec(\"ALTER TABLE {module}s ADD COLUMN {f.name} {sql_type};\").')}")
+    sql_type = f.sql_type.upper()
+    print(f"      {console.cyan(f'{app_name}_db:exec(\"ALTER TABLE {table} ADD COLUMN {f.name} {sql_type};\").')}")
     print(f"      {console.cyan(f'l({app_name}_db).')}")
     console.blank()
 
-    # Step 2 — FIELDS macro
-    console.section(f"Step 2 of 3 — FIELDS macro  ({model_file})")
+    # ------------------------------------------------------------------
+    # Step 2 — Edit FIELDS macro
+    # ------------------------------------------------------------------
+    console.section(f"Step 2 of 4 — FIELDS macro  (auto-editing {model_file})")
+    source = source.replace(
+        f'-define(FIELDS, "{current_fields}").',
+        f'-define(FIELDS, "{new_fields}").',
+    )
     console.blank()
-    print("  Find:\n")
-    print(f'      -define(FIELDS, "{current_fields}").')
-    console.blank()
-    print("  Change to:\n")
-    print(f'      -define(FIELDS, "{new_fields}").')
-    console.blank()
-
-    # Step 3 — to_map/1
-    console.section(f"Step 3 of 3 — to_map/1  ({model_file})")
-    console.blank()
-    print("  Find:\n")
-    print(f"      {current_tomap}")
-    console.blank()
-    print("  Change to:\n")
-    print(f"      {new_tomap}")
-    console.blank()
-    print("  And add the new key to the map body — insert before created_at:\n")
-    print(f"      {f.name} => {f.erl_var},")
-    print( "      created_at => CreatedAt")
+    print(f"  {console.dim(f'Was:')}  -define(FIELDS, \"{current_fields}\").")
+    print(f"  {console.green('Now:')}  -define(FIELDS, \"{new_fields}\").")
     console.blank()
 
-    # Optional — create/1 and update/2
-    console.section(f"Optional — create/1 and update/2  ({model_file})")
+    # ------------------------------------------------------------------
+    # Step 3 — Edit to_map/1 pattern
+    # ------------------------------------------------------------------
+    console.section(f"Step 3 of 4 — to_map/1 pattern  (auto-editing {model_file})")
+    source = source.replace(current_tomap, new_tomap)
     console.blank()
-    print(f"  If you want {console.bold(f.name)} to be writable:\n")
+    print(f"  {console.dim('Was:')}  {current_tomap}")
+    print(f"  {console.green('Now:')}  {new_tomap}")
+    console.blank()
+
+    # ------------------------------------------------------------------
+    # Step 4 — Edit map body
+    # ------------------------------------------------------------------
+    console.section(f"Step 4 of 4 — map body  (auto-editing {model_file})")
+    source, inserted = _insert_map_key(source, f.name, f.erl_var)
+    if inserted:
+        console.blank()
+        print(f"  {console.green('Added:')}  {f.name} => {f.erl_var},")
+        print(f"           (before created_at => CreatedAt)")
+    else:
+        console.blank()
+        console.warn("Could not auto-insert map key — add manually before created_at:")
+        print(f"      {f.name} => {f.erl_var},")
+    console.blank()
+
+    # Write the edited model file
+    model_file.write_text(source, encoding="utf-8")
+    console.ok(f"Saved {model_file}")
+    console.blank()
+
+    # ------------------------------------------------------------------
+    # Step 5 — Manual: create/1 and update/2
+    # ------------------------------------------------------------------
+    console.section("Step 5 of 4 — Manual: create/1 and update/2")
+    console.blank()
+    print(f"  Placeholder renumbering cannot be done safely automatically.")
+    print(f"  If you want {console.bold(f.name)} to be writable, edit {model_file}:\n")
     print("  In create/1 — add to the INSERT column list and VALUES:")
     print(f"      \"INSERT INTO ... (existing_cols, {f.name}) VALUES (existing_vals, ?N)\"")
-    print(f"      maps:get({f.name}, Attrs, null)")
+    print(f"      maps:get({f.name}, Attrs, null)   %% new arg")
     console.blank()
     print("  In update/2 — add to the SET clause:")
-    print(f"      {f.name} = ?N")
-    print(f"      maps:get({f.name}, Attrs, undefined)  %% add to args list")
+    print(f"      {f.name} = ?N,")
+    print(f"      maps:get({f.name}, Attrs, undefined)   %% new arg")
     console.blank()
-    print("  Remember to renumber all ?N placeholders after inserting.")
+    print("  Renumber all ?N placeholders after inserting.")
     console.blank()
 
+    # ------------------------------------------------------------------
     # Hot reload
+    # ------------------------------------------------------------------
     console.section("Hot-reload")
     console.blank()
-    print("  After saving, reload from the running shell:\n")
-    print(f"      {console.cyan(f'l({module}).')}")
+    print(f"  {console.cyan(f'l({module}).')}")
     console.blank()
-    print("  Or just save the file — the watcher recompiles it automatically.")
+    print("  Or just save the file — the watcher recompiles automatically.")
     console.blank()
 
 
 # ---------------------------------------------------------------------------
-# Source file parsing
+# Migration file writer
+# ---------------------------------------------------------------------------
+
+def _write_migration(app_name: str, module: str, table: str, f: Field) -> Path:
+    from cowboy_up.renderer import render_file
+    today   = date.today().strftime("%Y%m%d")
+    mig_dir = Path("src/migrations")
+    mig_dir.mkdir(parents=True, exist_ok=True)
+
+    seq     = _next_seq(mig_dir, today)
+    version = f"{today}_{seq:03d}_add_{f.name}_to_{table}"
+    sql     = f"ALTER TABLE {table} ADD COLUMN {f.name} {f.sql_type.upper()};"
+
+    content = render_file("models/migration.erl.tmpl", {
+        "app_name": app_name,
+        "version":  version,
+        "sql":      f'"{sql}"',
+    })
+    out = mig_dir / f"{version}.erl"
+    out.write_text(content, encoding="utf-8")
+    console.created(str(out))
+    return out
+
+
+def _next_seq(mig_dir: Path, today: str) -> int:
+    existing = list(mig_dir.glob(f"{today}_*.erl"))
+    if not existing:
+        return 2
+    nums = []
+    for p in existing:
+        m = re.match(rf"{today}_(\d+)_", p.name)
+        if m:
+            nums.append(int(m.group(1)))
+    return max(nums) + 1 if nums else 2
+
+
+# ---------------------------------------------------------------------------
+# Source file parsing and editing
 # ---------------------------------------------------------------------------
 
 def _extract_fields_macro(source: str) -> str | None:
@@ -132,14 +198,21 @@ def _extract_tomap_line(source: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _insert_before_created_at(fields: str, new_field: str) -> str:
-    """Insert new_field before 'created_at' in the comma-separated field list."""
-    return re.sub(r',\s*created_at', f', {new_field}, created_at', fields)
+def _extract_table(source: str) -> str:
+    m = re.search(r'-define\(TABLE,\s*"([^"]+)"\)', source)
+    return m.group(1) if m else "unknown_table"
 
 
-def _insert_var_before_created_at(tomap_line: str, new_var: str) -> str:
-    """Insert new_var before 'CreatedAt' in the to_map pattern."""
-    return re.sub(r',\s*CreatedAt\]', f', {new_var}, CreatedAt]', tomap_line)
+def _insert_before(text: str, new_item: str, pattern: str, replacement: str) -> str:
+    return re.sub(pattern, replacement, text, count=1)
+
+
+def _insert_map_key(source: str, name: str, erl_var: str) -> tuple[str, bool]:
+    """Insert 'name => ErlVar,' before 'created_at => CreatedAt' in the map body."""
+    pattern = r'(\s+)(created_at\s*=>\s*CreatedAt)'
+    replacement = rf'\1{name} => {erl_var},\n\1\2'
+    new_source, count = re.subn(pattern, replacement, source, count=1)
+    return new_source, count > 0
 
 
 # ---------------------------------------------------------------------------

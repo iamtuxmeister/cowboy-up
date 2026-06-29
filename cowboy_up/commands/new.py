@@ -63,6 +63,7 @@ def run(
 
     dirs = [
         "src/models",
+        "src/migrations",
         "config",
         "nginx",
         "scripts",
@@ -158,6 +159,9 @@ def _write_files(cfg: ProjectConfig) -> None:
         ("common/nginx_prod.tmpl",             "nginx/prod.conf"),
         # Systemd
         ("common/systemd.service.tmpl",        f"scripts/{cfg.app_name}.service"),
+        # Seed migration
+        ("models/seed_migration.erl.tmpl",
+         f"src/migrations/{v['datestamp']}_001_create_example.erl"),
         # CSS
         (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
     ] + html_files
@@ -194,7 +198,9 @@ def _write(path: Path, content: str) -> None:
 
 def _template_vars(cfg: ProjectConfig) -> dict:
     """Build the full variable dict for all templates."""
+    from datetime import date
     v = cfg.template_vars()
+    v["datestamp"] = date.today().strftime("%Y%m%d")
 
     # DB-specific vars
     v["db_backend_atom"] = cfg.db   # sqlite | postgres

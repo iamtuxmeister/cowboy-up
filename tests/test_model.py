@@ -126,3 +126,44 @@ class TestM2mFunctions:
     def test_empty_when_no_m2m(self):
         code = _m2m_functions("myapp", "teaching", "teachings", [])
         assert code == ""
+
+
+class TestWriteMigrations:
+    def test_writes_main_migration(self, tmp_path, monkeypatch):
+        from cowboy_up.commands.model import _write_migrations, _build_create_sql
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "src/migrations").mkdir(parents=True)
+        fields = parse_fields(["title:text", "speaker:text"])
+        columns = [f for f in fields if f.is_column]
+        _write_migrations("myapp", "teaching", "teachings", columns, [], [])
+        files = list((tmp_path / "src/migrations").glob("*.erl"))
+        assert len(files) == 1
+        assert "create_teachings" in files[0].name
+        content = files[0].read_text()
+        assert "-migration({myapp})" in content
+        assert "CREATE TABLE teachings" in content
+        assert "title  TEXT NOT NULL" in content
+
+    def test_writes_m2m_migrations(self, tmp_path, monkeypatch):
+        from cowboy_up.commands.model import _write_migrations
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "src/migrations").mkdir(parents=True)
+        fields = parse_fields(["title:text", "tag:many_to_many"])
+        columns  = [f for f in fields if f.is_column]
+        m2m      = [f for f in fields if f.is_many_to_many]
+        _write_migrations("myapp", "teaching", "teachings", columns, [], m2m)
+        files = sorted((tmp_path / "src/migrations").glob("*.erl"))
+        assert len(files) == 3
+        names = [f.name for f in files]
+        assert any("create_teachings" in n for n in names)
+        assert any("create_tags" in n for n in names)
+        assert any("create_teachings_tags" in n for n in names)
+
+    def test_build_create_sql(self):
+        from cowboy_up.commands.model import _build_create_sql
+        fields = parse_fields(["title:text", "count:integer"])
+        sql = _build_create_sql("books", fields)
+        assert "CREATE TABLE books" in sql
+        assert "title  TEXT NOT NULL" in sql
+        assert "count  INTEGER NOT NULL" in sql
+        assert "created_at TEXT" in sql

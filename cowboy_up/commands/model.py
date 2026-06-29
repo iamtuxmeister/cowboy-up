@@ -71,8 +71,8 @@ def run(model_name: str, table: str, field_specs: List[str]) -> None:
     out_file.write_text(content, encoding="utf-8")
     console.created(str(out_file))
 
-    # Migration hints
-    _print_migration_hints(app_name, module, table, columns, belongs_to, m2m)
+    # Write migration files
+    _write_migrations(app_name, module, table, columns, belongs_to, m2m)
 
     # Shell usage
     _print_shell_usage(module, belongs_to, has_many, m2m)
@@ -293,41 +293,106 @@ has(TagNames) when is_list(TagNames), length(TagNames) > 0 ->
 # Output helpers
 # ---------------------------------------------------------------------------
 
-def _print_migration_hints(app_name, module, table, columns, belongs_to, m2m):
-    today = date.today().strftime("%Y%m%d")
+def _write_migrations(app_name, module, table, columns, belongs_to, m2m):
+    """Write migration .erl files to src/migrations/ instead of printing SQL."""
+    from cowboy_up.renderer import render_file
+    today   = date.today().strftime("%Y%m%d")
+    mig_dir = Path("src/migrations")
+    mig_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine the next available sequence number
+    seq = _next_seq(mig_dir, today)
+
+    written = []
+
+    # --- Main table migration -----------------------------------------------
+    main_version = f"{today}_{seq:03d}_create_{table}"
+    main_sql     = _build_create_sql(table, columns)
+    _write_migration_file(mig_dir, app_name, main_version, main_sql)
+    written.append(main_version)
+    seq += 1
+
+    # --- tags + join table migrations (many_to_many) ------------------------
+    if m2m:
+        tags_version = f"{today}_{seq:03d}_create_tags"
+        tags_sql = (
+            "CREATE TABLE IF NOT EXISTS tags ("
+            "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  name       TEXT NOT NULL UNIQUE,"
+            "  created_at TEXT DEFAULT (datetime('now'))"
+            ");"
+        )
+        _write_migration_file(mig_dir, app_name, tags_version, tags_sql)
+        written.append(tags_version)
+        seq += 1
+
+        join         = f"{table}_tags"
+        join_version = f"{today}_{seq:03d}_create_{join}"
+        join_sql = [
+            f"CREATE TABLE {join} ("
+            f"  {module}_id INTEGER NOT NULL REFERENCES {table}(id),"
+            "  tag_id     INTEGER NOT NULL REFERENCES tags(id),"
+            f"  PRIMARY KEY ({module}_id, tag_id)"
+            ");",
+            f"CREATE INDEX IF NOT EXISTS idx_{join}_tag_id ON {join}(tag_id);"
+        ]
+        _write_migration_file(mig_dir, app_name, join_version, join_sql)
+        written.append(join_version)
+
     console.blank()
-    print(f"  Add to migrations() in src/{app_name}_db.erl:")
+    print("  Migrations written:")
+    for v in written:
+        console.created(f"src/migrations/{v}.erl")
     console.blank()
-    print(f'      {{"{today}_NNN_create_{table}",')
-    print(f'       "CREATE TABLE {table} (')
-    print(f'          id         INTEGER PRIMARY KEY AUTOINCREMENT,')
+    print(f"  {console.dim('They will run automatically on next startup.')}")
+
+
+def _build_create_sql(table, columns):
+    cols = ["  id         INTEGER PRIMARY KEY AUTOINCREMENT"]
     for f in columns:
         if f.is_belongs_to:
-            pt = f.parent_table
-            print(f'          {f.name}  INTEGER NOT NULL REFERENCES {pt}(id),')
+            cols.append(f"  {f.name}  INTEGER NOT NULL REFERENCES {f.parent_table}(id)")
         else:
-            print(f'          {f.name}  {f.sql_type.upper()} NOT NULL,')
-    print(f'          created_at TEXT DEFAULT (datetime(\'now\'))')
-    print(f'       );"}},')
+            cols.append(f"  {f.name}  {f.sql_type.upper()} NOT NULL")
+    cols.append("  created_at TEXT DEFAULT (datetime('now'))")
+    return f"CREATE TABLE {table} (\n" + ",\n".join(cols) + "\n);"
 
-    if m2m:
-        console.blank()
-        print(f'      {{"{today}_NNN_create_tags",')
-        print( '       "CREATE TABLE IF NOT EXISTS tags (')
-        print( '          id         INTEGER PRIMARY KEY AUTOINCREMENT,')
-        print( '          name       TEXT NOT NULL UNIQUE,')
-        print(f'          created_at TEXT DEFAULT (datetime(\'now\'))')
-        print( '       );"},')
-        console.blank()
-        join = f"{table}_tags"
-        print(f'      {{"{today}_NNN_create_{join}",')
-        print(f'       "CREATE TABLE {join} (')
-        print(f'          {module}_id INTEGER NOT NULL REFERENCES {table}(id),')
-        print( '          tag_id     INTEGER NOT NULL REFERENCES tags(id),')
-        print(f'          PRIMARY KEY ({module}_id, tag_id)')
-        print( '       );')
-        print(f'        CREATE INDEX IF NOT EXISTS idx_{join}_tag_id')
-        print(f'          ON {join}(tag_id);"}},')
+
+def _write_migration_file(mig_dir, app_name, version, sql):
+    """Render and write a single migration .erl file."""
+    from cowboy_up.renderer import render_file
+
+    # Format SQL as an Erlang string literal.
+    # A list of strings becomes a list of Erlang strings.
+    if isinstance(sql, list):
+        parts = [f'    "{s}"' for s in sql]
+        sql_erl = "[\n" + ",\n".join(parts) + "\n    ]"
+    else:
+        sql_erl = f'"{sql}"'
+
+    content = render_file("models/migration.erl.tmpl", {
+        "app_name": app_name,
+        "version":  version,
+        "sql":      sql_erl,
+    })
+    out = mig_dir / f"{version}.erl"
+    out.write_text(content, encoding="utf-8")
+
+
+def _next_seq(mig_dir, today):
+    """Find the next available sequence number for today's migrations."""
+    import re
+    existing = list(mig_dir.glob(f"{today}_*.erl"))
+    if not existing:
+        return 2   # 001 is reserved for create_example on new projects
+    nums = []
+    for p in existing:
+        m = re.match(rf"{today}_(\d+)_", p.name)
+        if m:
+            nums.append(int(m.group(1)))
+    return max(nums) + 1 if nums else 2
+
+
 
 
 def _print_shell_usage(module, belongs_to, has_many, m2m):
