@@ -308,7 +308,7 @@ def _print_migration_hints(app_name, module, table, columns, belongs_to, m2m):
         else:
             print(f'          {f.name}  {f.sql_type.upper()} NOT NULL,')
     print(f'          created_at TEXT DEFAULT (datetime(\'now\'))')
-    print(f'       );}},')
+    print(f'       );"}},')
 
     if m2m:
         console.blank()
@@ -327,7 +327,7 @@ def _print_migration_hints(app_name, module, table, columns, belongs_to, m2m):
         print(f'          PRIMARY KEY ({module}_id, tag_id)')
         print( '       );')
         print(f'        CREATE INDEX IF NOT EXISTS idx_{join}_tag_id')
-        print(f'          ON {join}(tag_id);}},')
+        print(f'          ON {join}(tag_id);"}},')
 
 
 def _print_shell_usage(module, belongs_to, has_many, m2m):

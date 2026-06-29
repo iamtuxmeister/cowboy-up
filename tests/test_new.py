@@ -65,14 +65,15 @@ class TestInlineContent:
 
 
 class TestProjectGeneration:
-    def test_creates_directory(self, tmp_path):
+    def test_creates_directory(self, tmp_path, monkeypatch):
         from cowboy_up.commands.new import run
+        monkeypatch.chdir(tmp_path)
         run(raw_name="test app", css="basic", templating="erlydtl",
             db="sqlite", interactive=False)
-        # run() uses cwd, so we need to check relative to cwd
-        # Just test imports work cleanly — full integration test skipped
-        # to avoid cwd side effects in CI
-        assert True
+        assert (tmp_path / "test_app").is_dir()
+        assert (tmp_path / "test_app" / "rebar.config").exists()
+        assert (tmp_path / "test_app" / "src" / "test_app_app.erl").exists()
+        assert (tmp_path / "test_app" / "priv" / "templates" / "layouts" / "base.html").exists()
 
     def test_all_css_themes_have_templates(self):
         """Every CSS theme must have base, home, about, error, app.css."""

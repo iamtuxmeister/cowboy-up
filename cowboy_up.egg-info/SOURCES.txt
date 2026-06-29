@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 cowboy_up/__init__.py
 cowboy_up/cli.py
