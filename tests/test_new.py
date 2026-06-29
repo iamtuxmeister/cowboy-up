@@ -81,11 +81,12 @@ class TestProjectGeneration:
         run(raw_name="mustache app", css="basic", templating="bbmustache",
             db="sqlite", interactive=False)
         proj = tmp_path / "mustache_app"
-        # bbmustache outputs .html files — same names as erlydtl, different content
+        # bbmustache outputs .html files directly in priv/templates/ — no layouts/
         assert (proj / "priv" / "templates" / "home.html").exists()
         assert (proj / "priv" / "templates" / "about.html").exists()
         assert (proj / "priv" / "templates" / "error.html").exists()
-        assert (proj / "priv" / "templates" / "layouts" / "base.html").exists()
+        # No layouts directory — bbmustache has no layout system
+        assert not (proj / "priv" / "templates" / "layouts").exists()
         # Handler should be the bbmustache one
         handler = (proj / "src" / "mustache_app_handler.erl").read_text()
         assert "bbmustache" in handler
