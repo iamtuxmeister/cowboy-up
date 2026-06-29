@@ -74,6 +74,13 @@ class TestProjectGeneration:
         assert (tmp_path / "test_app" / "rebar.config").exists()
         assert (tmp_path / "test_app" / "src" / "test_app_app.erl").exists()
         assert (tmp_path / "test_app" / "priv" / "templates" / "layouts" / "base.html").exists()
+        # Seed migration and registry
+        mig_dir = tmp_path / "test_app" / "src" / "migrations"
+        assert mig_dir.exists()
+        assert len(list(mig_dir.glob("*create_example.erl"))) == 1
+        registry = tmp_path / "test_app" / "src" / "test_app_migrations.erl"
+        assert registry.exists()
+        assert "create_example" in registry.read_text()
 
     def test_bbmustache_creates_mustache_files(self, tmp_path, monkeypatch):
         from cowboy_up.commands.new import run

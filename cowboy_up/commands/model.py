@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import date
 from typing import List
+import re
 import textwrap
 
 from cowboy_up import console
@@ -346,6 +347,9 @@ def _write_migrations(app_name, module, table, columns, belongs_to, m2m):
     console.blank()
     print(f"  {console.dim('They will run automatically on next startup.')}")
 
+    # Rebuild the registry so the db module can find all migrations
+    rebuild_registry(app_name)
+
 
 def _build_create_sql(table, columns):
     cols = ["  id         INTEGER PRIMARY KEY AUTOINCREMENT"]
@@ -391,6 +395,41 @@ def _next_seq(mig_dir, today):
         if m:
             nums.append(int(m.group(1)))
     return max(nums) + 1 if nums else 2
+
+
+def rebuild_registry(app_name: str) -> None:
+    """
+    Regenerate src/${app_name}_migrations.erl listing every migration
+    in src/migrations/ in sorted order.
+
+    Called after every cowboy-up model or add-field operation so the
+    registry is always in sync with the files on disk.
+    """
+    from cowboy_up.renderer import render_file
+    mig_dir  = Path("src/migrations")
+    mig_dir.mkdir(parents=True, exist_ok=True)
+
+    # Collect all migration versions from filenames, sorted
+    versions = sorted(
+        p.stem for p in mig_dir.glob("*.erl")
+        if re.match(r'^\d{8}_\d{3}_', p.stem)
+    )
+
+    # Build the Erlang list body: one quoted atom per line
+    if versions:
+        lines = [f"        '{v}'" for v in versions]
+        migration_list = ",\n".join(lines)
+    else:
+        migration_list = "        %% no migrations yet"
+
+    content = render_file("models/migrations_registry.erl.tmpl", {
+        "app_name":       app_name,
+        "migration_list": migration_list,
+    })
+
+    out = Path(f"src/{app_name}_migrations.erl")
+    out.write_text(content, encoding="utf-8")
+    console.created(str(out))
 
 
 

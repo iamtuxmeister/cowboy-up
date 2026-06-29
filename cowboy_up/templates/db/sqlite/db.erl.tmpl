@@ -113,30 +113,19 @@ apply_migration(Db, Mod) ->
     end.
 
 %% Discover all migration modules for this app.
-%% We scan the ebin directory for beam files whose names look like migrations
-%% (YYYYMMDD_NNN_*) and load them before checking attributes — lazy loading
-%% means they may not be in code:all_loaded() yet at startup.
+%% Delegates to the generated registry module which explicitly lists
+%% all migrations — reliable regardless of code path or load state.
 discover_migrations() ->
-    App     = $app_name,
-    EbinDir = code:lib_dir($app_name, ebin),
-    Beams   = filelib:wildcard("????????_???_*.beam", EbinDir),
-    Modules = [list_to_atom(filename:rootname(B)) || B <- Beams],
-    %% Ensure each is loaded
-    lists:foreach(fun(Mod) ->
-        case code:is_loaded(Mod) of
-            false -> code:load_file(Mod);
-            _     -> ok
-        end
-    end, Modules),
-    [Mod || Mod <- Modules, is_migration_for(Mod, App)].
-
-is_migration_for(Mod, App) ->
-    case catch Mod:module_info(attributes) of
-        Attrs when is_list(Attrs) ->
-            %% -migration(app_name). produces {migration, app_name} in attributes
-            lists:member({migration, App}, Attrs);
-        _ ->
-            false
+    Mod = list_to_atom(atom_to_list($app_name) ++ "_migrations"),
+    case code:ensure_loaded(Mod) of
+        {module, Mod} ->
+            Mod:all();
+        {error, _} ->
+            error_logger:warning_msg(
+                "[db] ~p not found — no migrations will run.~n"
+                "     Run 'cowboy-up model' to generate migrations.~n",
+                [Mod]),
+            []
     end.
 
 backend() ->

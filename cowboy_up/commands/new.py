@@ -162,8 +162,7 @@ def _write_files(cfg: ProjectConfig) -> None:
         # Seed migration
         ("models/seed_migration.erl.tmpl",
          f"src/migrations/{v['datestamp']}_001_create_example.erl"),
-        # CSS
-        (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
+        # CSS        (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
     ] + html_files
 
     # Inline files that don't need a template
@@ -179,6 +178,16 @@ def _write_files(cfg: ProjectConfig) -> None:
 
     for out_rel, content in inline:
         _write(cfg.target_dir / out_rel, content)
+
+    # Generate the migrations registry so the db module can find migrations
+    import os
+    orig_cwd = os.getcwd()
+    try:
+        os.chdir(cfg.target_dir)
+        from cowboy_up.commands.model import rebuild_registry
+        rebuild_registry(cfg.app_name)
+    finally:
+        os.chdir(orig_cwd)
 
 
 def _write(path: Path, content: str) -> None:

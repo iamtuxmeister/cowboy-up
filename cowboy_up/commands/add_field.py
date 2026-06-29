@@ -19,6 +19,7 @@ import re
 from cowboy_up import console
 from cowboy_up.field import Field, FieldParseError
 from cowboy_up.utils import detect_app_name, to_snake
+from cowboy_up.commands.model import rebuild_registry
 
 
 def run(model_name: str, field_spec: str) -> None:
@@ -66,6 +67,7 @@ def run(model_name: str, field_spec: str) -> None:
     # ------------------------------------------------------------------
     console.section("Step 1 of 4 — Migration file")
     mig_file = _write_migration(app_name, module, table, f)
+    rebuild_registry(app_name)
     console.blank()
     print(f"  {console.dim('Runs automatically on next startup.')}")
     console.blank()

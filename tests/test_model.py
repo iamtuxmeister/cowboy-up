@@ -143,6 +143,10 @@ class TestWriteMigrations:
         assert "-migration(myapp)" in content
         assert "CREATE TABLE teachings" in content
         assert "title  TEXT NOT NULL" in content
+        # Registry should also be written
+        registry = (tmp_path / "src/myapp_migrations.erl")
+        assert registry.exists()
+        assert "create_teachings" in registry.read_text()
 
     def test_writes_m2m_migrations(self, tmp_path, monkeypatch):
         from cowboy_up.commands.model import _write_migrations
@@ -158,6 +162,11 @@ class TestWriteMigrations:
         assert any("create_teachings" in n for n in names)
         assert any("create_tags" in n for n in names)
         assert any("create_teachings_tags" in n for n in names)
+        # Registry lists all three
+        registry = (tmp_path / "src/myapp_migrations.erl").read_text()
+        assert "create_teachings" in registry
+        assert "create_tags" in registry
+        assert "create_teachings_tags" in registry
 
     def test_build_create_sql(self):
         from cowboy_up.commands.model import _build_create_sql
