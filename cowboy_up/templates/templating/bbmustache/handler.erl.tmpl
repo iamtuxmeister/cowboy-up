@@ -8,11 +8,8 @@ render(Req, Template, Ctx) ->
     FullCtx = maps:merge(base_ctx(Req), Ctx),
     case file:read_file(TemplatePath) of
         {ok, Bin} ->
-            %% bbmustache expects string keys — convert atom keys to binary
-            StrCtx = maps:fold(fun(K, V, Acc) ->
-                Acc#{atom_to_binary(K, utf8) => to_binary(V)}
-            end, #{}, FullCtx),
-            Html = bbmustache:render(Bin, StrCtx),
+            Html = bbmustache:render(Bin, convert_ctx(FullCtx),
+                                     [{key_type, atom}]),
             cowboy_req:reply(200,
                 #{<<"content-type">> => <<"text/html; charset=utf-8">>},
                 Html, Req);
@@ -28,13 +25,13 @@ reply_json(Req, Status, Data) ->
         jsone:encode(Data), Req).
 
 reply_error(Req, Status, Message) ->
-    ErrorTemplate = filename:join([code:priv_dir($app_name), "templates", "error.mustache"]),
-    Ctx = #{<<"status">> => integer_to_binary(Status), <<"message">> => Message},
+    ErrorTemplate = filename:join([code:priv_dir($app_name), "templates", "error.html"]),
+    Ctx = #{status => integer_to_binary(Status), message => Message},
     case file:read_file(ErrorTemplate) of
         {ok, Bin} ->
             cowboy_req:reply(Status,
                 #{<<"content-type">> => <<"text/html; charset=utf-8">>},
-                bbmustache:render(Bin, Ctx), Req);
+                bbmustache:render(Bin, Ctx, [{key_type, atom}]), Req);
         _ ->
             cowboy_req:reply(Status,
                 #{<<"content-type">> => <<"text/plain">>},
@@ -50,15 +47,31 @@ base_ctx(Req) ->
       year     => integer_to_binary(Y)}.
 
 %% ---------------------------------------------------------------------------
-%% Internal
+%% Context conversion
+%%
+%% bbmustache with {key_type, atom} matches {{variable}} directly against
+%% atom keys — no conversion needed for scalar values.
+%%
+%% Lists of maps (e.g. items from a DB query) need their keys converted
+%% from whatever the model returns to atoms so bbmustache can match them.
 %% ---------------------------------------------------------------------------
 
-to_binary(V) when is_binary(V)  -> V;
-to_binary(V) when is_atom(V)    -> atom_to_binary(V, utf8);
-to_binary(V) when is_integer(V) -> integer_to_binary(V);
-to_binary(V) when is_list(V)    ->
-    case io_lib:char_list(V) of
-        true  -> list_to_binary(V);
-        false -> list_to_binary(io_lib:format("~p", [V]))
+convert_ctx(Map) when is_map(Map) ->
+    maps:fold(fun(K, V, Acc) ->
+        Acc#{to_atom(K) => convert_value(V)}
+    end, #{}, Map).
+
+convert_value(V) when is_map(V)  -> convert_ctx(V);
+convert_value(V) when is_list(V) ->
+    case is_list_of_maps(V) of
+        true  -> [convert_ctx(M) || M <- V];
+        false -> V
     end;
-to_binary(V) -> list_to_binary(io_lib:format("~p", [V])).
+convert_value(V) -> V.
+
+to_atom(K) when is_atom(K)   -> K;
+to_atom(K) when is_binary(K) -> binary_to_atom(K, utf8);
+to_atom(K) when is_list(K)   -> list_to_atom(K).
+
+is_list_of_maps([])      -> false;
+is_list_of_maps([H | _]) -> is_map(H).

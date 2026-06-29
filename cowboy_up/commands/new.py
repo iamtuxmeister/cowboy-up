@@ -116,13 +116,13 @@ def _write_files(cfg: ProjectConfig) -> None:
 
     # HTML template extension and source dir
     if is_erlydtl:
-        html_ext  = ".html"
-        html_src  = lambda page: f"css/{cfg.css}/{page}.html.tmpl"
-        base_out  = "priv/templates/layouts/base.html"
+        html_src = lambda page: f"css/{cfg.css}/{page}.html.tmpl"
+        base_out = "priv/templates/layouts/base.html"
     else:
-        html_ext  = ".mustache"
-        html_src  = lambda page: f"css/{cfg.css}/mustache/{page}.mustache.tmpl"
-        base_out  = "priv/templates/layouts/base.mustache"
+        # bbmustache reads plain files at runtime — use .html so the handler
+        # lookup ("home.html", "about.html") works without any extension change
+        html_src = lambda page: f"css/{cfg.css}/mustache/{page}.html.tmpl"
+        base_out = "priv/templates/layouts/base.html"
 
     # Each entry: (template_path, output_path_relative_to_target)
     files = [
@@ -148,11 +148,11 @@ def _write_files(cfg: ProjectConfig) -> None:
         ("common/systemd.service.tmpl",        f"scripts/{cfg.app_name}.service"),
         # CSS
         (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
-        # HTML/Mustache templates
+        # HTML/Mustache templates — both engines output .html files
         (html_src("base"),                     base_out),
-        (html_src("home"),                     f"priv/templates/home{html_ext}"),
-        (html_src("about"),                    f"priv/templates/about{html_ext}"),
-        (html_src("error"),                    f"priv/templates/error{html_ext}"),
+        (html_src("home"),                     "priv/templates/home.html"),
+        (html_src("about"),                    "priv/templates/about.html"),
+        (html_src("error"),                    "priv/templates/error.html"),
     ]
 
     # Inline files that don't need a template

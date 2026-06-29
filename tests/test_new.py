@@ -81,13 +81,12 @@ class TestProjectGeneration:
         run(raw_name="mustache app", css="basic", templating="bbmustache",
             db="sqlite", interactive=False)
         proj = tmp_path / "mustache_app"
-        # Should have .mustache templates, not .html
-        assert (proj / "priv" / "templates" / "home.mustache").exists()
-        assert (proj / "priv" / "templates" / "about.mustache").exists()
-        assert (proj / "priv" / "templates" / "error.mustache").exists()
-        # Should NOT have the ErlyDTL layout
-        assert not (proj / "priv" / "templates" / "layouts" / "base.html").exists()
-        # Handler should be the bbmustache one (no erlydtl:compile_file call)
+        # bbmustache outputs .html files — same names as erlydtl, different content
+        assert (proj / "priv" / "templates" / "home.html").exists()
+        assert (proj / "priv" / "templates" / "about.html").exists()
+        assert (proj / "priv" / "templates" / "error.html").exists()
+        assert (proj / "priv" / "templates" / "layouts" / "base.html").exists()
+        # Handler should be the bbmustache one
         handler = (proj / "src" / "mustache_app_handler.erl").read_text()
         assert "bbmustache" in handler
         assert "erlydtl" not in handler
@@ -108,11 +107,12 @@ class TestProjectGeneration:
                 assert p.exists(), f"Missing {theme}/{f}"
 
     def test_all_css_themes_have_mustache_templates(self):
-        """Every CSS theme must also have mustache variants."""
+        """Every CSS theme must have all four mustache variants."""
         from cowboy_up.renderer import TEMPLATES_ROOT
         for theme in ("basic", "pico", "tailwind", "daisyui"):
             mustache_dir = TEMPLATES_ROOT / "css" / theme / "mustache"
             assert mustache_dir.exists(), f"Missing mustache dir: {theme}/mustache"
-            for f in ("home.mustache.tmpl", "about.mustache.tmpl", "error.mustache.tmpl"):
+            for f in ("base.html.tmpl", "home.html.tmpl",
+                      "about.html.tmpl", "error.html.tmpl"):
                 p = mustache_dir / f
                 assert p.exists(), f"Missing {theme}/mustache/{f}"
