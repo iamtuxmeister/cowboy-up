@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} — {{app_name}}</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <header class="site-header">
+        <nav class="nav">
+            <a class="nav-brand" href="/">{{app_name}}</a>
+            <ul class="nav-links">
+                <li><a href="/" class="active">Home</a></li>
+                <li><a href="/about">About</a></li>
+            </ul>
+        </nav>
+    </header>
+    <main class="site-main">
+        <div class="container">
+            <section class="hero">
+                <h1>{{title}}</h1>
+                <p class="lead">Erlang + Cowboy + bbmustache + ${db}.</p>
+            </section>
+            <section class="card">
+                <h2>Example Records</h2>
+                {{#items}}
+                <table class="data-table">
+                    <thead>
+                        <tr><th>ID</th><th>Name</th><th>Created</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>{{id}}</td>
+                            <td>{{name}}</td>
+                            <td>{{created_at}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+                {{/items}}
+                {{^items}}
+                <p class="empty-state">No records yet — insert rows into the <code>example</code> table.</p>
+                {{/items}}
+            </section>
+        </div>
+    </main>
+    <footer class="site-footer">
+        <p>&copy; {{year}} {{app_name}}</p>
+    </footer>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
