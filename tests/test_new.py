@@ -78,6 +78,7 @@ class TestProjectGeneration:
         # Static assets must be present
         assert (proj / "priv" / "static" / "css" / "app.css").exists()
         assert (proj / "priv" / "static" / "js" / "app.js").exists()
+        assert (proj / "src" / "test_app_logger.erl").exists()
         # Seed migration and registry
         mig_dir = proj / "src" / "migrations"
         assert mig_dir.exists()
@@ -85,6 +86,19 @@ class TestProjectGeneration:
         registry = proj / "src" / "test_app_migrations.erl"
         assert registry.exists()
         assert "create_example" in registry.read_text()
+
+    def test_postgres_generates_worker(self, tmp_path, monkeypatch):
+        from cowboy_up.commands.new import run
+        monkeypatch.chdir(tmp_path)
+        run(raw_name="pg app", css="basic", templating="erlydtl",
+            db="postgres", interactive=False)
+        proj = tmp_path / "pg_app"
+        assert (proj / "src" / "pg_app_db.erl").exists()
+        assert (proj / "src" / "pg_app_pg_worker.erl").exists()
+        rebar = (proj / "rebar.config").read_text()
+        assert "epgsql" in rebar
+        assert "poolboy" in rebar
+        assert "%% {epgsql" not in rebar
 
     def test_bbmustache_creates_mustache_files(self, tmp_path, monkeypatch):
         from cowboy_up.commands.new import run

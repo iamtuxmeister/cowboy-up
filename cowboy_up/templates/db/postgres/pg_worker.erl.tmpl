@@ -1,0 +1,84 @@
+%%% poolboy worker — wraps a single epgsql connection.
+%%% One of these runs per pool slot (default: 5).
+-module(${app_name}_pg_worker).
+-behaviour(gen_server).
+-behaviour(poolboy_worker).
+
+-export([start_link/1]).
+-export([q/3, exec/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
+
+-record(state, {conn}).
+
+%% ---------------------------------------------------------------------------
+%% Public API — called via poolboy:transaction/2
+%% ---------------------------------------------------------------------------
+
+start_link(Args) ->
+    gen_server:start_link(?MODULE, Args, []).
+
+%% Parameterised query — returns {ok, Rows} | {error, Reason}
+%% PostgreSQL uses $$1, $$2, ... placeholders.
+q(Worker, Sql, Params) ->
+    gen_server:call(Worker, {q, Sql, Params}).
+
+%% Execute without returning rows — returns ok | {error, Reason}
+exec(Worker, Sql) ->
+    exec(Worker, Sql, []).
+exec(Worker, Sql, Params) ->
+    gen_server:call(Worker, {exec, Sql, Params}).
+
+%% ---------------------------------------------------------------------------
+%% gen_server callbacks
+%% ---------------------------------------------------------------------------
+
+init(Args) ->
+    Host     = proplists:get_value(host,     Args, "localhost"),
+    Port     = proplists:get_value(port,     Args, 5432),
+    Database = proplists:get_value(database, Args, "$app_name"),
+    Username = proplists:get_value(username, Args, "$app_name"),
+    Password = proplists:get_value(password, Args, ""),
+
+    {ok, Conn} = epgsql:connect(#{
+        host     => Host,
+        port     => Port,
+        database => Database,
+        username => Username,
+        password => Password,
+        timeout  => 5000
+    }),
+    {ok, #state{conn = Conn}}.
+
+handle_call({q, Sql, Params}, _From, #state{conn = Conn} = State) ->
+    Reply = case epgsql:equery(Conn, Sql, Params) of
+        {ok, _Cols, Rows} ->
+            %% Convert tuples to lists to match the esqlite row format
+            {ok, [tuple_to_list(R) || R <- Rows]};
+        {ok, _Count} ->
+            {ok, []};
+        {error, _} = E ->
+            E
+    end,
+    {reply, Reply, State};
+
+handle_call({exec, Sql, Params}, _From, #state{conn = Conn} = State) ->
+    Reply = case epgsql:equery(Conn, Sql, Params) of
+        {ok, _}        -> ok;
+        {ok, _, _}     -> ok;
+        {error, _} = E -> E
+    end,
+    {reply, Reply, State};
+
+handle_call(_Req, _From, State) ->
+    {reply, {error, unknown_call}, State}.
+
+handle_cast(_Msg, State)  -> {noreply, State}.
+handle_info(_Info, State) -> {noreply, State}.
+
+terminate(_Reason, #state{conn = Conn}) ->
+    epgsql:close(Conn),
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.

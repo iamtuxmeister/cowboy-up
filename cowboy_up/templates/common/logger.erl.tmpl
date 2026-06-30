@@ -1,0 +1,39 @@
+%%% =============================================================================
+%%% ${app_name}_logger  —  Cowboy request logger middleware
+%%%
+%%% Logs every request to error_logger (visible in rebar3 shell):
+%%%
+%%%   [http] GET / -> 200 (4ms)
+%%%   [http] GET /static/css/app.css -> 200 (1ms)
+%%%   [http] POST /things -> 201 (12ms)
+%%%   [http] GET /missing -> 404 (2ms)
+%%% =============================================================================
+-module(${app_name}_logger).
+-behaviour(cowboy_middleware).
+
+-export([execute/2]).
+
+execute(Req, Env) ->
+    Start  = erlang:monotonic_time(millisecond),
+    Method = cowboy_req:method(Req),
+    Path   = cowboy_req:path(Req),
+
+    Result = cowboy_handler:execute(Req, Env),
+
+    Elapsed = erlang:monotonic_time(millisecond) - Start,
+    Status  = case Result of
+        {ok, Req2, _} -> resp_status(Req2);
+        {stop, Req2}  -> resp_status(Req2);
+        _             -> 0
+    end,
+    error_logger:info_msg("[http] ~s ~s -> ~p (~pms)~n",
+                          [Method, Path, Status, Elapsed]),
+    Result.
+
+%% In Cowboy 2.x there is no cowboy_req:resp_status/1 function.
+%% The status code lives directly in the req map after the response is sent.
+resp_status(#{resp_status := Status}) when is_integer(Status) -> Status;
+resp_status(#{resp_status := Status}) when is_binary(Status)  ->
+    %% Cowboy may store "200 OK" as a binary — extract the integer part
+    binary_to_integer(hd(binary:split(Status, <<" ">>)));
+resp_status(_) -> 0.

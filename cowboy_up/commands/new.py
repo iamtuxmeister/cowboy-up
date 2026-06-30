@@ -147,10 +147,14 @@ def _write_files(cfg: ProjectConfig) -> None:
         (handler_tmpl,                          f"src/{cfg.app_name}_handler.erl"),
         (templates_tmpl,                        f"src/{cfg.app_name}_templates.erl"),
         ("common/watcher.erl.tmpl",            f"src/{cfg.app_name}_watcher.erl"),
+        ("common/logger.erl.tmpl",             f"src/{cfg.app_name}_logger.erl"),
         ("common/home_handler.erl.tmpl",       "src/home_handler.erl"),
         ("common/page_handler.erl.tmpl",       "src/page_handler.erl"),
         # DB
         (f"db/{cfg.db}/db.erl.tmpl",           f"src/{cfg.app_name}_db.erl"),
+    ] + ([
+        ("db/postgres/pg_worker.erl.tmpl",     f"src/{cfg.app_name}_pg_worker.erl"),
+    ] if cfg.db == "postgres" else []) + [
         # Config
         ("common/sys.config.tmpl",             "config/sys.config"),
         ("common/vm.args.tmpl",                "config/vm.args"),
@@ -219,10 +223,10 @@ def _template_vars(cfg: ProjectConfig) -> dict:
         v["db_app"]        = "        esqlite,"
         v["db_extra_deps"] = ""
     else:
-        v["db_app"]        = "        epgsql,"
+        v["db_app"]        = "        epgsql,\n        poolboy,"
         v["db_extra_deps"] = (
-            "    %% {epgsql,   \"4.7.1\"},\n"
-            "    %% {poolboy,  \"1.5.2\"},"
+            '    {epgsql,   "4.7.1"},\n'
+            '    {poolboy,  "1.5.2"},'
         )
 
     # Templating-specific vars

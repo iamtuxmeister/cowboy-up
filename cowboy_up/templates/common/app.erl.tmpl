@@ -24,7 +24,9 @@ start(_Type, _Args) ->
 
     {ok, _} = cowboy:start_clear(http_listener,
         [{port, Port}],
-        #{env => #{dispatch => Dispatch}}
+        #{env        => #{dispatch => Dispatch},
+          middlewares => [cowboy_router,
+                          ${app_name}_logger]}
     ),
 
     error_logger:info_msg("$app_name started on port ~p~n", [Port]),

@@ -1,0 +1,157 @@
+%%% Database abstraction — PostgreSQL backend (epgsql + poolboy)
+%%%
+%%% Prerequisites in rebar.config (already uncommented for you):
+%%%   {epgsql,   "4.7.1"}
+%%%   {poolboy,  "1.5.2"}
+%%%
+%%% Configure in config/sys.config:
+%%%   {db_backend, postgres},
+%%%   {postgres, [
+%%%       {host,      "localhost"},
+%%%       {port,      5432},
+%%%       {database,  "$app_name"},
+%%%       {user,      "$app_name"},
+%%%       {password,  "secret"},
+%%%       {pool_size, 5}
+%%%   ]}
+%%%
+%%% Create the database before starting:
+%%%   createdb $app_name
+-module(${app_name}_db).
+
+-export([init/0, close/0, q/1, q/2, exec/1, exec/2]).
+
+-define(POOL, ${app_name}_pg_pool).
+
+init() ->
+    case backend() of
+        postgres -> init_postgres();
+        sqlite   -> init_sqlite()
+    end.
+
+close() ->
+    case backend() of
+        postgres -> poolboy:stop(?POOL);
+        sqlite   -> esqlite3:close(conn())
+    end.
+
+q(Sql)         -> q(Sql, []).
+q(Sql, Params) ->
+    case backend() of
+        postgres -> pg_q(Sql, Params);
+        sqlite   -> sqlite_q(Sql, Params)
+    end.
+
+exec(Sql)         -> exec(Sql, []).
+exec(Sql, Params) ->
+    case backend() of
+        postgres -> pg_exec(Sql, Params);
+        sqlite   -> sqlite_exec(Sql, Params)
+    end.
+
+%% --- PostgreSQL ------------------------------------------------------------
+
+init_postgres() ->
+    {ok, Cfg}  = application:get_env($app_name, postgres),
+    Host       = proplists:get_value(host,      Cfg, "localhost"),
+    Port       = proplists:get_value(port,      Cfg, 5432),
+    Database   = proplists:get_value(database,  Cfg, "$app_name"),
+    User       = proplists:get_value(user,      Cfg, "$app_name"),
+    Password   = proplists:get_value(password,  Cfg, ""),
+    PoolSize   = proplists:get_value(pool_size, Cfg, 5),
+
+    PoolArgs   = [{name,           {local, ?POOL}},
+                  {worker_module,  ${app_name}_pg_worker},
+                  {size,           PoolSize},
+                  {max_overflow,   2}],
+    WorkerArgs = [{host,     Host},
+                  {port,     Port},
+                  {database, Database},
+                  {username, User},
+                  {password, Password}],
+
+    {ok, _} = poolboy:start_link(PoolArgs, WorkerArgs),
+    run_migrations(),
+    ok.
+
+pg_q(Sql, Params) ->
+    poolboy:transaction(?POOL, fun(Worker) ->
+        ${app_name}_pg_worker:q(Worker, Sql, Params)
+    end).
+
+pg_exec(Sql, Params) ->
+    poolboy:transaction(?POOL, fun(Worker) ->
+        ${app_name}_pg_worker:exec(Worker, Sql, Params)
+    end).
+
+%% --- SQLite fallback -------------------------------------------------------
+
+init_sqlite() ->
+    {ok, Cfg} = application:get_env($app_name, sqlite),
+    Path = proplists:get_value(path, Cfg, "priv/db/${app_name}.db"),
+    ok   = filelib:ensure_dir(Path),
+    {ok, Db} = esqlite3:open(Path),
+    persistent_term:put({${app_name}_db, conn}, Db),
+    run_migrations(),
+    ok.
+
+conn() -> persistent_term:get({${app_name}_db, conn}).
+
+sqlite_q(Sql, Params) ->
+    case esqlite3:q(conn(), Sql, Params) of
+        Rows when is_list(Rows) -> {ok, Rows};
+        {error, _} = E          -> E
+    end.
+
+sqlite_exec(Sql, []) ->
+    case esqlite3:exec(conn(), Sql) of
+        ok             -> ok;
+        {error, _} = E -> E
+    end;
+sqlite_exec(Sql, Params) ->
+    case esqlite3:q(conn(), Sql, Params) of
+        Rows when is_list(Rows) -> ok;
+        {error, _} = E          -> E
+    end.
+
+%% --- Migrations ------------------------------------------------------------
+
+run_migrations() ->
+    Mod = list_to_atom(atom_to_list($app_name) ++ "_migrations"),
+    case code:ensure_loaded(Mod) of
+        {module, Mod} ->
+            Migrations = Mod:all(),
+            Sorted     = lists:sort(
+                fun(A, B) -> A:version() =< B:version() end,
+                Migrations),
+            ensure_migrations_table(),
+            lists:foreach(fun apply_migration/1, Sorted);
+        {error, _} ->
+            error_logger:warning_msg(
+                "[db] ~p not found — no migrations will run.~n", [Mod])
+    end.
+
+ensure_migrations_table() ->
+    Sql = "CREATE TABLE IF NOT EXISTS schema_migrations ("
+          "  version    TEXT PRIMARY KEY,"
+          "  applied_at TIMESTAMPTZ DEFAULT NOW()"
+          ")",
+    exec(Sql).
+
+apply_migration(Mod) ->
+    Vsn = Mod:version(),
+    case q("SELECT version FROM schema_migrations WHERE version = $$1", [Vsn]) of
+        {ok, []} ->
+            Statements = case Mod:up() of
+                S when is_list(S), not is_integer(hd(S)) -> S;
+                S -> [S]
+            end,
+            lists:foreach(fun(S) -> ok = exec(S) end, Statements),
+            exec("INSERT INTO schema_migrations (version) VALUES ($$1)", [Vsn]),
+            error_logger:info_msg("[db] Applied migration: ~s~n", [Vsn]);
+        {ok, _} ->
+            ok
+    end.
+
+backend() ->
+    application:get_env($app_name, db_backend, postgres).
