@@ -99,6 +99,14 @@ class TestProjectGeneration:
         assert "epgsql" in rebar
         assert "poolboy" in rebar
         assert "%% {epgsql" not in rebar
+        # esqlite must not appear in a postgres project
+        assert "esqlite" not in rebar
+        app_src = (proj / "src" / "pg_app.app.src").read_text()
+        assert "esqlite" not in app_src
+        # sqlite fallback must not appear in db module
+        db_erl = (proj / "src" / "pg_app_db.erl").read_text()
+        assert "esqlite3" not in db_erl
+        assert "init_sqlite" not in db_erl
 
     def test_bbmustache_creates_mustache_files(self, tmp_path, monkeypatch):
         from cowboy_up.commands.new import run

@@ -221,7 +221,7 @@ def _template_vars(cfg: ProjectConfig) -> dict:
 
     if cfg.db == "sqlite":
         v["db_app"]        = "        esqlite,"
-        v["db_extra_deps"] = ""
+        v["db_extra_deps"] = '    {esqlite, "0.8.0"},'
         v["postgres_config"] = (
             "        %% PostgreSQL — switch db_backend to postgres and fill in to activate\n"
             "        %% {postgres, [\n"

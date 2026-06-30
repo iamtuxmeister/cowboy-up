@@ -101,7 +101,7 @@ class ProjectConfig:
             "erlang_cookie":  self.erlang_cookie,
             "css":            self.css,
             "templating":     self.templating,
-            "db":             self.db,
+            "db":             {"sqlite": "SQLite", "postgres": "PostgreSQL"}.get(self.db, self.db),
         }
 
 
