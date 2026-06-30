@@ -19,7 +19,7 @@ import re
 from cowboy_up import console
 from cowboy_up.field import Field, FieldParseError
 from cowboy_up.utils import detect_app_name, to_snake
-from cowboy_up.commands.model import rebuild_registry
+from cowboy_up.commands.model import rebuild_registry, _detect_db
 
 
 def run(model_name: str, field_spec: str) -> None:
@@ -35,6 +35,9 @@ def run(model_name: str, field_spec: str) -> None:
         )
 
     app_name   = detect_app_name()
+    db         = _detect_db()
+    sql_type_pg = {'blob': 'BYTEA'}.get(f.sql_type, f.sql_type.upper())
+    sql_type_use = sql_type_pg if db == 'postgres' else f.sql_type.upper()
     module     = to_snake(model_name)
     model_file = Path(f"src/models/{module}.erl")
 
@@ -72,7 +75,7 @@ def run(model_name: str, field_spec: str) -> None:
     print(f"  {console.dim('Runs automatically on next startup.')}")
     console.blank()
     print("  Apply immediately in the running shell (no restart needed):\n")
-    sql_type = f.sql_type.upper()
+    sql_type = sql_type_use
     print(f"      {console.cyan(f'{app_name}_db:exec(\"ALTER TABLE {table} ADD COLUMN {f.name} {sql_type};\").')}")
     print(f"      {console.cyan(f'l({app_name}_db).')}")
     console.blank()
@@ -161,7 +164,7 @@ def _write_migration(app_name: str, module: str, table: str, f: Field) -> Path:
 
     seq     = _next_seq(mig_dir, today)
     version = f"{today}_{seq:03d}_add_{f.name}_to_{table}"
-    sql     = f"ALTER TABLE {table} ADD COLUMN {f.name} {f.sql_type.upper()};"
+    sql     = f"ALTER TABLE {table} ADD COLUMN {f.name} {sql_type_use};"
 
     content = render_file("models/migration.erl.tmpl", {
         "app_name": app_name,

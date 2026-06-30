@@ -1,7 +1,7 @@
 %%% Shared handler utilities.
 -module(${app_name}_handler).
 
--export([render/3, reply_json/3, reply_error/3, not_found/1, base_ctx/1]).
+-export([render/3, reply_json/3, reply_error/3, not_found/1, base_ctx/1, format_ts/1]).
 
 render(Req, Template, Ctx) ->
     Mod     = ${app_name}_templates:template_module(
@@ -42,3 +42,20 @@ base_ctx(Req) ->
     #{path     => cowboy_req:path(Req),
       app_name => <<"$app_name">>,
       year     => integer_to_binary(Y)}.
+
+%% ---------------------------------------------------------------------------
+%% format_ts/1 — normalise timestamps from any backend to a binary string.
+%%
+%% SQLite returns a binary:    <<"2026-06-30 22:08:31">>
+%% PostgreSQL returns a tuple: {{2026,6,30},{22,8,31.419934}}
+%% ---------------------------------------------------------------------------
+format_ts(Ts) when is_binary(Ts) ->
+    Ts;
+format_ts({{Y, Mo, D}, {H, Mi, S}}) ->
+    Sec = trunc(S),
+    list_to_binary(
+        io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
+                      [Y, Mo, D, H, Mi, Sec])
+    );
+format_ts(Ts) ->
+    list_to_binary(io_lib:format("~p", [Ts])).

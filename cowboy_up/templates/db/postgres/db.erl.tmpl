@@ -146,7 +146,7 @@ apply_migration(Mod) ->
                 S when is_list(S), not is_integer(hd(S)) -> S;
                 S -> [S]
             end,
-            lists:foreach(fun(S) -> ok = exec(S) end, Statements),
+            lists:foreach(fun(Stmt) -> ok = exec(Stmt) end, Statements),
             exec("INSERT INTO schema_migrations (version) VALUES ($$1)", [Vsn]),
             error_logger:info_msg("[db] Applied migration: ~s~n", [Vsn]);
         {ok, _} ->

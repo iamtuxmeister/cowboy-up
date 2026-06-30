@@ -73,7 +73,7 @@ def run(model_name: str, table: str, field_specs: List[str]) -> None:
     console.created(str(out_file))
 
     # Write migration files
-    _write_migrations(app_name, module, table, columns, belongs_to, m2m)
+    _write_migrations(app_name, module, table, columns, belongs_to, m2m, _detect_db())
 
     # Shell usage
     _print_shell_usage(module, belongs_to, has_many, m2m)
@@ -97,7 +97,8 @@ def _build_vars(
     var_list = ", ".join(erl_vars)
 
     # Map body
-    map_pairs = [("id", "Id")] + [(f.name, f.erl_var) for f in columns] + [("created_at", "CreatedAt")]
+    map_pairs = [("id", "Id")] + [(f.name, f.erl_var) for f in columns] + \
+                [("created_at", f"{app_name}_handler:format_ts(CreatedAt)")]
     map_body = ",\n      ".join(f"{k} => {v}" for k, v in map_pairs)
 
     # INSERT
@@ -294,7 +295,7 @@ has(TagNames) when is_list(TagNames), length(TagNames) > 0 ->
 # Output helpers
 # ---------------------------------------------------------------------------
 
-def _write_migrations(app_name, module, table, columns, belongs_to, m2m):
+def _write_migrations(app_name, module, table, columns, belongs_to, m2m, db='sqlite'):
     """Write migration .erl files to src/migrations/ instead of printing SQL."""
     from cowboy_up.renderer import render_file
     today   = date.today().strftime("%Y%m%d")
@@ -308,7 +309,7 @@ def _write_migrations(app_name, module, table, columns, belongs_to, m2m):
 
     # --- Main table migration -----------------------------------------------
     main_version = f"{today}_{seq:03d}_create_{table}"
-    main_sql     = _build_create_sql(table, columns)
+    main_sql     = _build_create_sql(table, columns, db)
     _write_migration_file(mig_dir, app_name, main_version, main_sql)
     written.append(main_version)
     seq += 1
@@ -316,13 +317,22 @@ def _write_migrations(app_name, module, table, columns, belongs_to, m2m):
     # --- tags + join table migrations (many_to_many) ------------------------
     if m2m:
         tags_version = f"{today}_{seq:03d}_create_tags"
-        tags_sql = (
-            "CREATE TABLE IF NOT EXISTS tags ("
-            "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "  name       TEXT NOT NULL UNIQUE,"
-            "  created_at TEXT DEFAULT (datetime('now'))"
-            ");"
-        )
+        if db == "postgres":
+            tags_sql = (
+                "CREATE TABLE IF NOT EXISTS tags ("
+                "  id         SERIAL PRIMARY KEY,"
+                "  name       TEXT NOT NULL UNIQUE,"
+                "  created_at TIMESTAMPTZ DEFAULT NOW()"
+                ");"
+            )
+        else:
+            tags_sql = (
+                "CREATE TABLE IF NOT EXISTS tags ("
+                "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "  name       TEXT NOT NULL UNIQUE,"
+                "  created_at TEXT DEFAULT (datetime('now'))"
+                ");"
+            )
         _write_migration_file(mig_dir, app_name, tags_version, tags_sql)
         written.append(tags_version)
         seq += 1
@@ -351,14 +361,20 @@ def _write_migrations(app_name, module, table, columns, belongs_to, m2m):
     rebuild_registry(app_name)
 
 
-def _build_create_sql(table, columns):
-    cols = ["  id         INTEGER PRIMARY KEY AUTOINCREMENT"]
+def _build_create_sql(table, columns, db="sqlite"):
+    if db == "postgres":
+        pk   = "  id         SERIAL PRIMARY KEY"
+        ts   = "  created_at TIMESTAMPTZ DEFAULT NOW()"
+    else:
+        pk   = "  id         INTEGER PRIMARY KEY AUTOINCREMENT"
+        ts   = "  created_at TEXT DEFAULT (datetime('now'))"
+    cols = [pk]
     for f in columns:
         if f.is_belongs_to:
             cols.append(f"  {f.name}  INTEGER NOT NULL REFERENCES {f.parent_table}(id)")
         else:
             cols.append(f"  {f.name}  {f.sql_type.upper()} NOT NULL")
-    cols.append("  created_at TEXT DEFAULT (datetime('now'))")
+    cols.append(ts)
     return f"CREATE TABLE {table} (\n" + ",\n".join(cols) + "\n);"
 
 
@@ -466,3 +482,14 @@ def _detect_app_name() -> str:
 
 def _to_snake(name: str) -> str:
     return to_snake(name)
+
+
+def _detect_db() -> str:
+    """Read db_backend from config/sys.config. Defaults to sqlite."""
+    cfg = Path("config/sys.config")
+    if not cfg.exists():
+        return "sqlite"
+    text = cfg.read_text()
+    if "db_backend, postgres" in text:
+        return "postgres"
+    return "sqlite"

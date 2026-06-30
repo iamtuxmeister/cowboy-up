@@ -6,10 +6,30 @@ init(Req, State) ->
     {ok, Rows} = ${app_name}_db:q(
         "SELECT id, name, created_at FROM example ORDER BY id LIMIT 20"
     ),
-    Items = [#{id => Id, name => Name, created_at => Ts}
+    Items = [#{id         => Id,
+               name       => Name,
+               created_at => format_ts(Ts)}
              || [Id, Name, Ts] <- Rows],
     Req2 = ${app_name}_handler:render(Req, "home.html", #{
         title => <<"Welcome">>,
         items => Items
     }),
     {ok, Req2, State}.
+
+%% ---------------------------------------------------------------------------
+%% format_ts/1 — normalise timestamps from any backend to a binary string.
+%%
+%% SQLite returns a binary string:  <<"2026-06-30 22:08:31">>
+%% PostgreSQL returns a tuple:      {{2026,6,30},{22,8,31.419934}}
+%% ---------------------------------------------------------------------------
+format_ts(Ts) when is_binary(Ts) ->
+    Ts;
+format_ts({{Y, Mo, D}, {H, Mi, S}}) ->
+    Sec = trunc(S),
+    list_to_binary(
+        io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B",
+                      [Y, Mo, D, H, Mi, Sec])
+    );
+format_ts(Ts) ->
+    %% Fallback — convert anything else to a string
+    list_to_binary(io_lib:format("~p", [Ts])).

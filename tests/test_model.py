@@ -84,7 +84,7 @@ class TestBuildVars:
         assert "title => Title" in v["map_body"]
         assert "speaker => Speaker" in v["map_body"]
         assert "id => Id" in v["map_body"]
-        assert "created_at => CreatedAt" in v["map_body"]
+        assert "format_ts(CreatedAt)" in v["map_body"]
 
 
 class TestBelongsToFunctions:

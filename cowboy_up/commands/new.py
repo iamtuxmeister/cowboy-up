@@ -163,8 +163,8 @@ def _write_files(cfg: ProjectConfig) -> None:
         ("common/nginx_prod.tmpl",             "nginx/prod.conf"),
         # Systemd
         ("common/systemd.service.tmpl",        f"scripts/{cfg.app_name}.service"),
-        # Seed migration
-        ("models/seed_migration.erl.tmpl",
+        # Seed migration — db-specific SQL syntax
+        (f"models/seed_migration{'_postgres' if cfg.db == 'postgres' else ''}.erl.tmpl",
          f"src/migrations/{v['datestamp']}_001_create_example.erl"),
         # CSS
         (f"css/{cfg.css}/app.css.tmpl",        "priv/static/css/app.css"),
@@ -222,11 +222,32 @@ def _template_vars(cfg: ProjectConfig) -> dict:
     if cfg.db == "sqlite":
         v["db_app"]        = "        esqlite,"
         v["db_extra_deps"] = ""
+        v["postgres_config"] = (
+            "        %% PostgreSQL — switch db_backend to postgres and fill in to activate\n"
+            "        %% {postgres, [\n"
+            "        %%     {host,      \"localhost\"},\n"
+            "        %%     {port,      5432},\n"
+            "        %%     {database,  \"" + cfg.app_name + "\"},\n"
+            "        %%     {user,      \"" + cfg.app_name + "\"},\n"
+            "        %%     {password,  \"secret\"},\n"
+            "        %%     {pool_size, 5}\n"
+            "        %% ]},\n"
+        )
     else:
         v["db_app"]        = "        epgsql,\n        poolboy,"
         v["db_extra_deps"] = (
             '    {epgsql,   "4.7.1"},\n'
             '    {poolboy,  "1.5.2"},'
+        )
+        v["postgres_config"] = (
+            "        {postgres, [\n"
+            "            {host,      \"localhost\"},\n"
+            "            {port,      5432},\n"
+            "            {database,  \"" + cfg.app_name + "\"},\n"
+            "            {user,      \"" + cfg.app_name + "\"},\n"
+            "            {password,  \"secret\"},\n"
+            "            {pool_size, 5}\n"
+            "        ]},\n"
         )
 
     # Templating-specific vars
